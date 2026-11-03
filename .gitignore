@@ -1,0 +1,63 @@
+# ===================================================================
+# .gitignore - SIMKlinik Utama Dr. H. A. Rotinsulu Cianjur
+# ===================================================================
+
+# 1. Kredensial Sensitif Google Cloud (SANGAT PENTING: JANGAN DI-PUSH!)
+google-credentials.json
+*credentials*.json
+*.pem
+*.key
+
+# 2. Basis Data Lokal SQLite (Data Rekam Medis Pasien)
+data/
+server/data/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# 3. Dependensi Node.js
+node_modules/
+server/node_modules/
+client/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 4. Berkas Hasil Kompilasi / Build Artifacts
+server/dist/
+client/.next/
+client/out/
+dist/
+# 7. Berkas Unduhan / Ekspor Sementara
+*.xlsx
+*.pdf
+!SUHERIONO (MCU).pdf
+!header-hasil.jpeg
+!*.docx
+# 5. Berkas Environment Variables
+.env
+.env*.local
+.env.development
+.env.production
+.env.test
+
+# 6. File Sistem Operasi & Editor
+.DS_Store
+Thumbs.db
+ehthumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 7. Berkas Unduhan / Ekspor Sementara
+*.xlsx
+*.pdf
+!header-hasil.jpeg
+!*.docx
+!*.jpeg
+!*.png
+!*.jpg
