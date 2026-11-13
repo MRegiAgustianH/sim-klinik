@@ -233,6 +233,92 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     } catch {
       // Kolom sudah ada
     }
+
+    // Database lama punya CHECK yang hanya mengizinkan 'Sehat'/'Sehat dengan catatan'.
+    // Tanpa migrasi ini, menyimpan laporan dengan 'Fit' ditolak SQLite (HTTP 500).
+    this.migrateMcuConclusionConstraint();
+  }
+
+  private migrateMcuConclusionConstraint() {
+    const row = this.get<{ sql: string | null }>(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mcu_reports'`
+    );
+    if (!row || !row.sql || row.sql.includes("'Fit'")) {
+      return; // tabel belum ada atau constraint sudah mendukung 'Fit'
+    }
+
+    this.logger.log('Memigrasi constraint conclusionType pada tabel mcu_reports...');
+
+    const columns = [
+      'id',
+      'reportNumber',
+      'patientName',
+      'nik',
+      'ageGender',
+      'birthDate',
+      'address',
+      'examDate',
+      'purpose',
+      'vitalSigns',
+      'anthropometry',
+      'physicalExam',
+      'labExam',
+      'supportingExam',
+      'examinationSections',
+      'conclusionType',
+      'conclusionNotes',
+      'recommendations',
+      'doctorName',
+      'doctorSip',
+      'createdAt',
+      'updatedAt',
+    ].join(', ');
+
+    // SQLite tidak mendukung ALTER pada CHECK, jadi tabel dibangun ulang.
+    try {
+      this.db.exec('BEGIN TRANSACTION;');
+      this.db.exec(`
+        CREATE TABLE mcu_reports_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          reportNumber TEXT,
+          patientName TEXT NOT NULL,
+          nik TEXT,
+          ageGender TEXT NOT NULL,
+          birthDate TEXT,
+          address TEXT,
+          examDate TEXT NOT NULL,
+          purpose TEXT DEFAULT 'MCU Kerja',
+          vitalSigns TEXT,
+          anthropometry TEXT,
+          physicalExam TEXT,
+          labExam TEXT,
+          supportingExam TEXT,
+          conclusionType TEXT NOT NULL CHECK(conclusionType IN ('Fit', 'Fit dengan catatan', 'Temporary unfit', 'Unfit', 'Sehat', 'Sehat dengan catatan', 'Temporary Unfit')),
+          conclusionNotes TEXT,
+          recommendations TEXT,
+          doctorName TEXT NOT NULL,
+          doctorSip TEXT,
+          createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+          examinationSections TEXT
+        );
+      `);
+      this.db.exec(`INSERT INTO mcu_reports_new (${columns}) SELECT ${columns} FROM mcu_reports;`);
+      this.db.exec('DROP TABLE mcu_reports;');
+      this.db.exec('ALTER TABLE mcu_reports_new RENAME TO mcu_reports;');
+      this.db.exec('COMMIT;');
+      this.logger.log('Migrasi constraint conclusionType selesai.');
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK;');
+      } catch {
+        // abaikan
+      }
+      this.logger.error(
+        `Migrasi constraint conclusionType gagal: ${err instanceof Error ? err.message : String(err)}`
+      );
+      throw err;
+    }
   }
 
   private seedInitialData(isDevMode = false) {

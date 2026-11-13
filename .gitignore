@@ -11,6 +11,7 @@ google-credentials.json
 # 2. Basis Data Lokal SQLite (Data Rekam Medis Pasien)
 data/
 server/data/
+backups/
 *.sqlite
 *.sqlite3
 *.sqlite-wal
