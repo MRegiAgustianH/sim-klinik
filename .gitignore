@@ -28,9 +28,12 @@ yarn-error.log*
 
 # 4. Berkas Hasil Kompilasi / Build Artifacts
 server/dist/
+server/dist-dev/
 client/.next/
+client/.next-dev/
 client/out/
 dist/
+*.tsbuildinfo
 # 7. Berkas Unduhan / Ekspor Sementara
 *.xlsx
 *.pdf
@@ -50,6 +53,7 @@ Thumbs.db
 ehthumbs.db
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 

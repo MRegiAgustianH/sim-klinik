@@ -49,8 +49,8 @@ export class CreateMcuDto {
   examinationSections?: string | Array<unknown>;
 
   @IsNotEmpty({ message: 'Kesimpulan kelayakan wajib dipilih' })
-  @IsIn(['Sehat', 'Sehat dengan catatan', 'Temporary Unfit', 'Unfit'])
-  conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';
+  @IsIn(['Fit', 'Fit dengan catatan', 'Temporary unfit', 'Unfit', 'Sehat', 'Sehat dengan catatan', 'Temporary Unfit'])
+  conclusionType: 'Fit' | 'Fit dengan catatan' | 'Temporary unfit' | 'Unfit' | 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit';
 
   @IsOptional()
   @IsString()

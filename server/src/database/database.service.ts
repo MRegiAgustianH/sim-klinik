@@ -17,7 +17,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    const dbPath = path.join(dataDir, 'vaksinku.sqlite');
+    // *.env.local menandai mode pengembangan: pakai file database terpisah
+    // agar data uji coba tidak menyentuh database production yang sedang dipakai.
+    const isDevMode = fs.existsSync(path.join(process.cwd(), '.env.local'));
+    const dbFileName = isDevMode ? 'vaksinku-dev.sqlite' : 'vaksinku.sqlite';
+    const dbPath = path.join(dataDir, dbFileName);
     this.logger.log(`Inisialisasi SQLite database pada: ${dbPath}`);
     this.db = new DatabaseSync(dbPath);
 
@@ -25,7 +29,32 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.db.exec('PRAGMA journal_mode = WAL;');
 
     this.runMigrations();
-    this.seedInitialData();
+    this.purgeDemoPatientData(isDevMode);
+    this.seedInitialData(isDevMode);
+  }
+
+  // Data demo (pasien vaksinasi & laporan MCU contoh) hanya boleh ada di mode
+  // development. Setiap kali server PRODUCTION dijalankan, data demo dihapus
+  // berdasarkan penanda spesifik — data pasien asli tidak disentuh.
+  private purgeDemoPatientData(isDevMode: boolean) {
+    if (isDevMode) return;
+
+    // NIK milik pasien contoh di seedInitialData()
+    const demoNiks = ['3201015504920002', '3273024808950004', '3171056209980001', '3204121503880005'];
+    const placeholders = demoNiks.map(() => '?').join(', ');
+    const removedRecords = this.run(`DELETE FROM vaccination_records WHERE nik IN (${placeholders})`, demoNiks);
+    const removedMcu = this.run(
+      `DELETE FROM mcu_reports WHERE reportNumber = ? AND patientName = ? AND nik = ?`,
+      ['MCU-2026-11-001', 'SUHERIONO', '1207022006770001']
+    );
+
+    const nRecords = Number(removedRecords.changes ?? 0);
+    const nMcu = Number(removedMcu.changes ?? 0);
+    if (nRecords > 0 || nMcu > 0) {
+      this.logger.log(
+        `Pembersihan data demo production: ${nRecords} rekam vaksinasi, ${nMcu} laporan MCU contoh dihapus.`
+      );
+    }
   }
 
   onModuleDestroy() {
@@ -188,7 +217,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         physicalExam TEXT,
         labExam TEXT,
         supportingExam TEXT,
-        conclusionType TEXT NOT NULL CHECK(conclusionType IN ('Sehat', 'Sehat dengan catatan', 'Temporary Unfit', 'Unfit')),
+        conclusionType TEXT NOT NULL CHECK(conclusionType IN ('Fit', 'Fit dengan catatan', 'Temporary unfit', 'Unfit', 'Sehat', 'Sehat dengan catatan', 'Temporary Unfit')),
         conclusionNotes TEXT,
         recommendations TEXT,
         doctorName TEXT NOT NULL,
@@ -206,7 +235,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private seedInitialData() {
+  private seedInitialData(isDevMode = false) {
     const usersCount = this.get<{ count: number }>('SELECT COUNT(*) as count FROM users');
     if (!usersCount || usersCount.count === 0) {
       this.logger.log('Melakukan seeding akun pengguna awal (Superadmin, Dokter, Perawat)...');
@@ -320,8 +349,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Data contoh pasien hanya dibuat di mode development.
+    // Production tidak pernah menerima pasien dummy.
     const recordCount = this.get<{ count: number }>('SELECT COUNT(*) as count FROM vaccination_records');
-    if (!recordCount || recordCount.count === 0) {
+    if (isDevMode && (!recordCount || recordCount.count === 0)) {
       this.logger.log('Melakukan seeding contoh data pasien & rekam vaksinasi...');
       const today = new Date().toISOString().split('T')[0];
       const currentMonth = today.substring(0, 7);
@@ -487,9 +518,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       ]);
     }
 
-    // 6. Seed Laporan MCU Awal (Berdasarkan Dokumen SUHERIONO)
+    // 6. Seed Laporan MCU Awal (Berdasarkan Dokumen SUHERIONO) — hanya di development
     const mcuCount = this.get<{ count: number }>('SELECT COUNT(*) as count FROM mcu_reports');
-    if (!mcuCount || mcuCount.count === 0) {
+    if (isDevMode && (!mcuCount || mcuCount.count === 0)) {
       this.logger.log('Melakukan seeding template laporan MCU awal (SUHERIONO)...');
       const suherionoVital = JSON.stringify({
         bloodPressure: '127/90 mmHg (Pre-hipertensi)',

@@ -34,7 +34,8 @@ Proyek ini terhubung ke repositori GitHub:
 2. **Laporan Hasil Medical Check Up (MCU) Dokter**
    - Pembuatan laporan MCU digital tanpa perlu mengetik manual di Microsoft Word.
    - **Template Cepat (1-Klik Isi Normal):** Mengisi otomatis seluruh poin dengan hasil normal sehingga dokter cukup mengubah poin yang ditemukan kelainan.
-   - **Poin Pemeriksaan Terstruktur:** Tanda Vital, Antropometri & Kalkulator IMT otomatis, Pemeriksaan Fisik Lengkap, Laboratorium Darah & Urine, Rontgen Thorax, EKG, Treadmill, Audiometri, dan Spirometri.
+   - **Poin Pemeriksaan Terstruktur:** Tanda Vital, Antropometri & Kalkulator IMT otomatis, Pemeriksaan Fisik Lengkap, Laboratorium (Darah Lengkap, Urine Lengkap, Gula Puasa, Profil Lipid, Fungsi Hati, Faal Ginjal, HBsAg, Tes NAPZA), Rontgen Thorax, EKG, Treadmill, Audiometri, dan Spirometri.
+   - **Urutan Pemeriksaan Fleksibel:** Setiap kategori maupun sub-poin dapat digeser ke atas/bawah; huruf urutan (A, B, C...) dihitung ulang otomatis di layar dan di PDF.
    - **Live Interactive Document Preview:** Pratinjau langsung 4 halaman dokumen cetak A4 dengan kop resmi `header-hasil.jpeg`.
    - **Ekspor PDF 4 Halaman Resmi:** Dilengkapi margin 3 cm, font Arial 11 pt, nomor halaman Cambria di tengah, checklist kesimpulan fit/unfit, saran medis, dan legalitas tanda tangan dokter.
 
@@ -93,6 +94,36 @@ Saat aplikasi pertama kali dijalankan, sistem otomatis melakukan *seeding* akun 
    - Menjalankan frontend Next.js pada port **`8080`** (bebas bentrok dengan aplikasi kwitansi di port 3000).
    - Membuka peramban (*browser*) otomatis ke halaman login `http://localhost:8080/login`.
 3. Biarkan jendela Command Prompt tetap terbuka selama aplikasi digunakan.
+
+---
+
+## Pemisahan Mode Production dan Development
+
+Web production yang melayani pasien **jangan dimatikan** saat ada perubahan fitur. Mode development berjalan berdampingan di port dan database terpisah, sehingga klaim data pasien tetap aman.
+
+| Aspek | Production (pasien) | Development (uji fitur) |
+| :--- | :--- | :--- |
+| Cara menjalankan | `JALANKAN_APLIKASI.bat` | `MODE_PENGEMBANGAN_DEV.bat` |
+| Frontend | `http://localhost:8080` | `http://localhost:8081` |
+| Backend | `4000` | `4001` |
+| Database | `server/data/vaksinku.sqlite` | `server/data/vaksinku-dev.sqlite` |
+| Folder build | `client/.next` | `client/.next-dev` |
+| Backend dijalankan dari | `server/dist` | langsung dari `server/src` (ts-node) |
+| Hot reload | Tidak | Ya (fast refresh) |
+
+### Tahapan rilis fitur ke production
+
+1. **Uji di mode development** — jalankan `MODE_PENGEMBANGAN_DEV.bat` (atau `node runner.js --dev`). Kalau `server/.env.local` belum ada, file itu dibuat otomatis; keberadaannya menandai backend memakai database `vaksinku-dev.sqlite`, jadi data uji tidak masuk ke database pasien. Web production di port 8080 tetap melayani.
+2. **Validasi** — cek form, pratinjau cetak A4, dan unduh PDF di port 8081.
+3. **Build** — buka Command Prompt baru di folder aplikasi, jalankan kedua perintah ini:
+   ```bat
+   cd server && npm run build && cd ..
+   cd client && npm run build && cd ..
+   ```
+4. **Deploy** — tutup jendela production lama (CTRL + C), lalu klik ganda `JALANKAN_APLIKASI.bat`. Downtime hanya beberapa detik.
+5. **Rollback** — bila versi baru bermasalah, kembalikan source ke commit sebelumnya lalu ulangi langkah 3–4.
+
+> **Catatan:** `node runner.js` (tanpa `--dev`) akan otomatis membebaskan port 4000/8080 agar tidak ada server production ganda. Mode dev hanya membebaskan port 4001/8081, sehingga production tidak tersentuh. Database `vaksinku-dev.sqlite` sengaja tidak diberi data pasien asli — bila perlu uji dengan data mirip, input pemilik baru dari menu pasien di port 8081.
 
 ---
 

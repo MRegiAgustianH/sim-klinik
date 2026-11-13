@@ -4,17 +4,21 @@ import * as fs from 'fs';
 import PDFDocument from 'pdfkit';
 import { DatabaseService, SqliteParam } from '../database/database.service';
 import { CreateMcuDto, UpdateMcuDto } from './mcu.dto';
+import { McuSectionCode, formatMcuSectionTitle, mcuSectionCode } from './mcu-template';
 
 export interface McuExamItem {
   id: string;
   name: string;
   value: string;
+  pageBreakBefore?: boolean;
 }
 
 export interface McuExamSection {
   id: string;
+  code: McuSectionCode;
   title: string;
   items: McuExamItem[];
+  pageBreakBefore?: boolean;
 }
 
 export interface McuReportItem {
@@ -33,7 +37,14 @@ export interface McuReportItem {
   labExam: string | null;
   supportingExam: string | null;
   examinationSections: string | null;
-  conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';
+  conclusionType:
+    | 'Fit'
+    | 'Fit dengan catatan'
+    | 'Temporary unfit'
+    | 'Unfit'
+    | 'Sehat'
+    | 'Sehat dengan catatan'
+    | 'Temporary Unfit';
   conclusionNotes: string | null;
   recommendations: string | null;
   doctorName: string;
@@ -101,7 +112,7 @@ export class McuService {
       try {
         const parsed = JSON.parse(report.examinationSections);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return this.normalizeSections(parsed);
         }
       } catch {
         // Fallback ke legacy
@@ -123,6 +134,7 @@ export class McuService {
     const sections: McuExamSection[] = [];
 
     // 1. Tanda Vital
+    const sectionTitle = (code: McuSectionCode) => formatMcuSectionTitle(code, sections.length);
     const vitalItems: McuExamItem[] = [];
     if (vital.bloodPressure) vitalItems.push({ id: 'vital_bp', name: 'Tekanan Darah', value: vital.bloodPressure });
     if (vital.pulse) vitalItems.push({ id: 'vital_pulse', name: 'Nadi', value: vital.pulse });
@@ -130,7 +142,7 @@ export class McuService {
     if (vital.temperature) vitalItems.push({ id: 'vital_temp', name: 'Suhu', value: vital.temperature });
     if (vital.consciousness) vitalItems.push({ id: 'vital_cons', name: 'Kesadaran', value: vital.consciousness });
     if (vitalItems.length > 0) {
-      sections.push({ id: 'sec_vital', title: 'A. TANDA VITAL', items: vitalItems });
+      sections.push({ id: 'sec_vital', code: 'vital', title: sectionTitle('vital'), items: vitalItems });
     }
 
     // 2. Antropometri
@@ -140,7 +152,7 @@ export class McuService {
     if (antropo.bmi) antropoItems.push({ id: 'antropo_bmi', name: 'IMT / BMI', value: antropo.bmi });
     if (antropo.nutritionStatus) antropoItems.push({ id: 'antropo_nutrition', name: 'Status Gizi', value: antropo.nutritionStatus });
     if (antropoItems.length > 0) {
-      sections.push({ id: 'sec_antropo', title: 'B. ANTROPOMETRI', items: antropoItems });
+      sections.push({ id: 'sec_antropo', code: 'antropo', title: sectionTitle('antropo'), items: antropoItems });
     }
 
     // 3. Fisik
@@ -157,19 +169,22 @@ export class McuService {
     if (physical.abdomen) physicalItems.push({ id: 'phy_abdomen', name: 'Abdomen', value: physical.abdomen });
     if (physical.extremities) physicalItems.push({ id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: physical.extremities });
     if (physicalItems.length > 0) {
-      sections.push({ id: 'sec_physical', title: 'C. PEMERIKSAAN FISIK', items: physicalItems });
+      sections.push({ id: 'sec_physical', code: 'physical', title: sectionTitle('physical'), items: physicalItems });
     }
 
-    // 4. Laboratorium
+    // 4. Laboratorium: Darah Lengkap, Urine Lengkap, Gula Puasa, Profil Lipid,
+    //    Fungsi Hati, Faal Ginjal, HBsAg, Tes NAPZA
     const labItems: McuExamItem[] = [];
     if (lab.completeBlood) labItems.push({ id: 'lab_blood', name: 'Darah Lengkap', value: lab.completeBlood });
     if (lab.completeUrine) labItems.push({ id: 'lab_urine', name: 'Urine Lengkap', value: lab.completeUrine });
-    if (lab.bloodChemistry) labItems.push({ id: 'lab_chem', name: 'Kimia Darah', value: lab.bloodChemistry });
-    if (lab.additionalLab) labItems.push({ id: 'lab_add', name: 'Profil Lipid & Fungsi Hati', value: lab.additionalLab });
+    if (lab.fastingGlucose) labItems.push({ id: 'lab_fasting_glucose', name: 'Gula Puasa', value: lab.fastingGlucose });
+    if (lab.lipidProfile) labItems.push({ id: 'lab_lipid', name: 'Profil Lipid', value: lab.lipidProfile });
+    if (lab.liverFunction) labItems.push({ id: 'lab_liver', name: 'Fungsi Hati', value: lab.liverFunction });
+    if (lab.kidneyFunction) labItems.push({ id: 'lab_kidney', name: 'Faal Ginjal', value: lab.kidneyFunction });
     if (lab.hbsag) labItems.push({ id: 'lab_hbsag', name: 'HBsAg', value: lab.hbsag });
-    if (lab.drugTest) labItems.push({ id: 'lab_drug', name: 'Tes NAFZA', value: lab.drugTest });
+    if (lab.drugTest) labItems.push({ id: 'lab_drug_test', name: 'Tes NAPZA', value: lab.drugTest });
     if (labItems.length > 0) {
-      sections.push({ id: 'sec_lab', title: 'D. PEMERIKSAAN LABORATORIUM', items: labItems });
+      sections.push({ id: 'sec_lab', code: 'lab', title: sectionTitle('lab'), items: labItems });
     }
 
     // 5. Penunjang
@@ -180,10 +195,63 @@ export class McuService {
     if (supporting.audiometry) supItems.push({ id: 'sup_audio', name: 'Audiometri', value: supporting.audiometry });
     if (supporting.spirometry) supItems.push({ id: 'sup_spiro', name: 'Spirometri', value: supporting.spirometry });
     if (supItems.length > 0) {
-      sections.push({ id: 'sec_sup', title: 'E. PEMERIKSAAN PENUNJANG', items: supItems });
+      sections.push({ id: 'sec_sup', code: 'support', title: sectionTitle('support'), items: supItems });
     }
 
     return sections;
+  }
+
+  // Urutan section mengikuti urutan array (bebas dipindah), huruf judul dihitung otomatis
+  normalizeSections(raw: unknown): McuExamSection[] {
+    if (!Array.isArray(raw)) return [];
+
+    const sections: McuExamSection[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object') continue;
+      const sec = entry as Record<string, unknown>;
+      const itemsRaw = Array.isArray(sec.items) ? sec.items : [];
+      const items: McuExamItem[] = itemsRaw
+        .filter((it): it is Record<string, unknown> => !!it && typeof it === 'object')
+        .map((it, idx) => {
+          const item: McuExamItem = {
+            id: String(it.id ?? `item_${idx}`),
+            name: String(it.name ?? ''),
+            value: String(it.value ?? ''),
+          };
+          // Menerima true dan "true" (data lama/enkode berbeda) tanpa menganggap truthy lain.
+          if (it.pageBreakBefore === true || it.pageBreakBefore === 'true') item.pageBreakBefore = true;
+          return item;
+        });
+
+      const code = mcuSectionCode({ code: sec.code as string, id: sec.id as string });
+      const section: McuExamSection = {
+        id: String(sec.id ?? `sec_${Date.now()}_${sections.length}`),
+        code: code ?? 'physical',
+        title: code
+          ? formatMcuSectionTitle(code, sections.length)
+          : String(sec.title ?? `Pemeriksaan Tambahan ${sections.length + 1}`),
+        items,
+      };
+      // Flag pageBreakBefore ikut disimpan agar PDF berikutnya tetap memecah halaman di titik yang sama
+      if (sec.pageBreakBefore === true || sec.pageBreakBefore === 'true') section.pageBreakBefore = true;
+      sections.push(section);
+    }
+    return sections;
+  }
+
+  private serializeSections(raw: unknown): string | null {
+    if (Array.isArray(raw)) {
+      return JSON.stringify(this.normalizeSections(raw));
+    }
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? JSON.stringify(this.normalizeSections(parsed)) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   getById(id: number): McuReportItem {
@@ -201,11 +269,7 @@ export class McuService {
     const now = new Date();
     const reportNumber = `MCU-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(Date.now()).slice(-4)}`;
 
-    const examSectionsStr = Array.isArray(dto.examinationSections)
-      ? JSON.stringify(dto.examinationSections)
-      : typeof dto.examinationSections === 'string'
-      ? dto.examinationSections
-      : null;
+    const examSectionsStr = this.serializeSections(dto.examinationSections);
 
     const vitalStr = typeof dto.vitalSigns === 'object' ? JSON.stringify(dto.vitalSigns) : dto.vitalSigns || null;
     const antropoStr = typeof dto.anthropometry === 'object' ? JSON.stringify(dto.anthropometry) : dto.anthropometry || null;
@@ -250,11 +314,7 @@ export class McuService {
   update(id: number, dto: UpdateMcuDto): McuReportItem {
     this.getById(id);
 
-    const examSectionsStr = Array.isArray(dto.examinationSections)
-      ? JSON.stringify(dto.examinationSections)
-      : typeof dto.examinationSections === 'string'
-      ? dto.examinationSections
-      : null;
+    const examSectionsStr = this.serializeSections(dto.examinationSections);
 
     const vitalStr = typeof dto.vitalSigns === 'object' ? JSON.stringify(dto.vitalSigns) : dto.vitalSigns || null;
     const antropoStr = typeof dto.anthropometry === 'object' ? JSON.stringify(dto.anthropometry) : dto.anthropometry || null;
@@ -377,20 +437,30 @@ export class McuService {
       doc.y = 20 + naturalHeaderHeight + 10;
     };
 
+    // Setiap halaman baru (otomatis maupun paksa) selalu mendapat kop.
+    doc.on('pageAdded', () => {
+      drawHeader();
+    });
+
     const maxContentY = 745;
 
+    // addPage() otomatis menggambar kop lewat listener 'pageAdded'
     const checkPageBreak = (neededHeight: number) => {
       if (doc.y + neededHeight > maxContentY) {
         doc.addPage();
-        drawHeader();
       }
+    };
+
+    // Paksa halaman baru atas permintaan dokter (opsi "halaman baru" pada kategori/poin)
+    const pageBreakBeforeSection = () => {
+      doc.addPage();
     };
 
     const drawTitle = (line1: string, line2: string) => {
       doc.fontSize(12).font(fontArialBold).fillColor('#1e3a8a')
-        .text(line1, leftMargin, doc.y, { align: 'center', width: printableWidth });
-      doc.text(line2, leftMargin, doc.y, { align: 'center', width: printableWidth });
-      doc.moveDown(0.5);
+        .text(line1, leftMargin, doc.y, { align: 'center', width: printableWidth, lineGap: 0 });
+      doc.text(line2, leftMargin, doc.y, { align: 'center', width: printableWidth, lineGap: 0 });
+      doc.y += 6;
     };
 
     const drawIdTable = (title = 'IDENTITAS PASIEN') => {
@@ -399,30 +469,37 @@ export class McuService {
 
       const labelWidth = 145;
       const valueWidth = printableWidth - labelWidth - 10;
+      // Baris tabel digambar dengan teks tanpa lineGap agar tinggi tabel persis seperti pratinjau
+      const textOptions = { width: valueWidth, lineGap: 0 };
+      const labelOptions = { width: labelWidth, lineGap: 0 };
 
       const idRows = [
-        ['Nama', `: ${report.patientName}`],
-        ['Umur / Jenis Kelamin', `: ${report.ageGender}`],
-        ['Tanggal Lahir', `: ${report.birthDate || '-'}`],
-        ['Alamat', `: ${report.address || '-'}`],
-        ['Tanggal Pemeriksaan', `: ${report.examDate}`],
-        ['Keperluan', `: ${report.purpose || 'MCU kerja'}`],
+        ['Nama', report.patientName, true],
+        ['Umur / Jenis Kelamin', report.ageGender, false],
+        ['Tanggal Lahir', report.birthDate || '-', false],
+        ['Alamat', report.address || '-', false],
+        ['Tanggal Pemeriksaan', report.examDate, false],
+        ['Keperluan', report.purpose || 'MCU kerja', false],
       ];
 
       doc.fontSize(11).font(fontArial);
 
-      idRows.forEach(([lbl, val]) => {
-        const textH = doc.heightOfString(val, { width: valueWidth });
-        const rowH = Math.max(18, textH + 6);
+      idRows.forEach(([lbl, val, isBold]) => {
+        // Ukur dengan font yang benar-benar dipakai baris ini (Nama dicetak tebal)
+        doc.font(isBold ? fontArialBold : fontArial);
+        const textH = doc.heightOfString(String(val), textOptions);
+        const labelH = doc.heightOfString(String(lbl), labelOptions);
+        const rowH = Math.max(16, Math.max(textH, labelH) + 3);
         const rowY = doc.y;
 
         doc.rect(leftMargin, rowY, printableWidth, rowH).strokeColor('#000000').lineWidth(0.5).stroke();
-        doc.font(fontArialBold).fillColor('#000000').text(lbl, leftMargin + 6, rowY + 3.5, { width: labelWidth });
-        doc.font(fontArial).fillColor('#000000').text(val, leftMargin + labelWidth + 6, rowY + 3.5, { width: valueWidth });
+        doc.font(fontArialBold).fillColor('#000000').text(String(lbl), leftMargin + 6, rowY + 1.5, labelOptions);
+        doc.font(isBold ? fontArialBold : fontArial).fillColor('#000000')
+          .text(String(val), leftMargin + labelWidth + 6, rowY + 1.5, textOptions);
 
         doc.y = rowY + rowH;
       });
-      doc.y += 8;
+      doc.y += 2;
     };
 
     const drawSectionTitle = (title: string) => {
@@ -430,45 +507,98 @@ export class McuService {
       doc.y += 3;
     };
 
-    const drawPointRow = (label: string, val: string, indent = leftMargin + 8) => {
+    // Tinggi satu baris poin dihitung ulang agar pemecahan halaman kategori/poin konsisten.
+    const measurePointRow = (label: string, val: string) => {
       const valStr = `: ${val || '-'}`;
       const labelW = 155;
       const valW = printableWidth - labelW - 12;
       doc.fontSize(11).font(fontArial);
-      const textH = doc.heightOfString(valStr, { width: valW });
-      const rowH = Math.max(16, textH + 3);
+      const textH = doc.heightOfString(valStr, { width: valW, lineGap: 0 });
+      const labelH = doc.heightOfString(label, { width: labelW, lineGap: 0 });
+      return Math.max(16, Math.max(textH, labelH) + 3);
+    };
+
+    const drawPointRow = (label: string, val: string, indent = leftMargin + 8) => {
+      const valStr = `: ${val || '-'}`;
+      const labelW = 155;
+      const valW = printableWidth - labelW - 12;
+      const textOptions = { width: valW, lineGap: 0 };
+      const labelOptions = { width: labelW, lineGap: 0 };
+      const rowH = measurePointRow(label, val);
 
       checkPageBreak(rowH);
 
       const y = doc.y;
-      doc.fontSize(11).font(fontArial).fillColor('#334155').text(label, indent, y, { width: labelW });
-      doc.fillColor('#000000').text(valStr, indent + labelW + 4, y, { width: valW });
+      doc.fontSize(11).font(fontArial).fillColor('#334155').text(label, indent, y, labelOptions);
+      doc.fillColor('#000000').text(valStr, indent + labelW + 4, y, textOptions);
       doc.y = y + rowH;
     };
 
-    // HALAMAN 1: IDENTITAS PASIEN
+    // HALAMAN 1: IDENTITAS PASIEN (kop sudah digambar oleh listener 'pageAdded')
     doc.addPage();
-    drawHeader();
     drawTitle('RESUME HASIL PEMERIKSAAN', `MEDICAL CHECK UP (${(report.purpose || 'MCU KERJA').toUpperCase()})`);
     drawIdTable('IDENTITAS PASIEN');
 
     // POINT-POINT PEMERIKSAAN FLEKSIBEL
+    // pageBreakBefore pada kategori/poin = dokter memaksa mulai halaman baru
     const sections = this.ensureSections(report);
+
+    // Pelacak apakah halaman saat ini sudah berisi pemeriksaan. Kategori pertama
+    // tidak perlu halaman baru (halaman 1 sudah berisi identitas), sama seperti pratinjau.
+    let hasExamOnPage = false;
+    const addPageForExam = () => {
+      doc.addPage();
+      hasExamOnPage = false;
+    };
+
     sections.forEach((sec) => {
       const validItems = (sec.items || []).filter(
         (it) => (it.name && it.name.trim() !== '') || (it.value && it.value.trim() !== '')
       );
       if (validItems.length === 0) return;
 
-      checkPageBreak(40);
+      if ((sec.pageBreakBefore && hasExamOnPage) || doc.y + 40 > maxContentY) {
+        addPageForExam();
+      }
+
       drawSectionTitle(sec.title);
+      hasExamOnPage = true;
+      let itemsOnThisPage = 0;
 
       validItems.forEach((it) => {
+        // Hanya penanda manual yang memindah poin; selain itu tiap poin butuh ruang setinggi barisnya.
+        const rowHeight = measurePointRow(it.name, it.value);
+        if (it.pageBreakBefore && itemsOnThisPage > 0) {
+          addPageForExam();
+          drawSectionTitle(`${sec.title} (Lanjutan)`);
+          hasExamOnPage = true;
+          itemsOnThisPage = 0;
+        } else if (doc.y + rowHeight > maxContentY) {
+          addPageForExam();
+          drawSectionTitle(`${sec.title} (Lanjutan)`);
+          hasExamOnPage = true;
+          itemsOnThisPage = 0;
+        }
         drawPointRow(it.name, it.value);
+        itemsOnThisPage++;
       });
 
       doc.y += 6;
     });
+
+    // Penanda "dilanjutkan" HANYA bila kesimpulan tidak muat di sisa halaman ini,
+    // sama seperti aturan di pratinjau web. Teks dijaga di atas maxContentY agar
+    // pdfkit tidak membuat halaman baru diam-diam.
+    if (doc.y + 210 > maxContentY && doc.y + 26 >= maxContentY && doc.y + 20 <= maxContentY) {
+      doc.fontSize(10).font(fontArial).fillColor('#475569')
+        .text('(Dilanjutkan di halaman berikutnya)', leftMargin, doc.y + 4, {
+          align: 'right',
+          width: printableWidth,
+          lineGap: 0,
+        });
+      doc.y = doc.y + 4 + 10 * 1.15;
+      doc.fillColor('#000000');
+    }
 
     // KESIMPULAN, SARAN & TTD DOKTER
     checkPageBreak(210);
@@ -476,11 +606,19 @@ export class McuService {
     drawSectionTitle('KESIMPULAN');
     doc.y += 2;
 
+    // Laporan lama memakai istilah 'Sehat' / 'Sehat dengan catatan'
+    const isFit = report.conclusionType === ('Sehat' as string) || report.conclusionType === 'Fit';
+    const isFitWithNotes =
+      report.conclusionType === ('Sehat dengan catatan' as string) || report.conclusionType === 'Fit dengan catatan';
+
+    // Kotak digambar lebih dulu agar posisi teks antarpilihan tetap lurus.
+    // Path garis selalu digambar sebelum path terisi agar warna fill tidak bocor ke kotak berikutnya.
     const drawCheckbox = (label: string, isChecked: boolean, textVal: string) => {
       const boxY = doc.y;
       doc.rect(leftMargin + 6, boxY + 2, 9, 9).strokeColor('#000000').lineWidth(1).stroke();
       if (isChecked) {
-        doc.rect(leftMargin + 8, boxY + 4, 5, 5).fill('#000000');
+        doc.rect(leftMargin + 6, boxY + 2, 9, 9).fillColor('#000000').fill();
+        doc.fillColor('#000000');
       }
       doc.fontSize(11).font(isChecked ? fontArialBold : fontArial).fillColor('#000000')
         .text(label, leftMargin + 22, boxY);
@@ -490,11 +628,11 @@ export class McuService {
       doc.y = Math.max(doc.y, boxY + 16);
     };
 
-    drawCheckbox('Sehat', report.conclusionType === 'Sehat', '');
+    drawCheckbox('Fit', isFit, '');
     drawCheckbox(
-      'Sehat dengan catatan',
-      report.conclusionType === 'Sehat dengan catatan',
-      report.conclusionNotes || ''
+      'Fit dengan catatan',
+      isFitWithNotes,
+      isFitWithNotes ? report.conclusionNotes || '' : ''
     );
     drawCheckbox(
       'Temporary unfit',
@@ -527,6 +665,7 @@ export class McuService {
     }
 
     doc.y += 10;
+    // Butuh ruang sampai y=730 (teks SIP), masih di bawah maxY pdfkit (812).
     checkPageBreak(85);
     const signY = doc.y + 6;
     doc.fontSize(11).font(fontArial).fillColor('#000000').text('Dokter Pemeriksa,', leftMargin + printableWidth - 180, signY, { align: 'center', width: 180 });
@@ -540,6 +679,8 @@ export class McuService {
       doc.switchToPage(i);
       doc.fontSize(11).font(fontCambria).fillColor('#000000')
         .text(`Page ${i + 1} of ${range.count}`, leftMargin, 792, { align: 'center', width: printableWidth, lineBreak: false });
+      // Kembalikan posisi tulis agar tidak memicu halaman baru saat PDF ditutup
+      doc.y = maxContentY;
     }
 
     doc.end();

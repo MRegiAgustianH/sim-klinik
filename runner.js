@@ -1,12 +1,47 @@
-// runner.js - Unified Application Launcher for VaksinKU
+// runner.js - Unified Application Launcher for SIMKlinik
+// Mode:
+//   node runner.js           -> PRODUCTION (port 8080 / 4000, database production)
+//   node runner.js --dev     -> DEVELOPMENT (port 8081 / 4001, database terpisah, fast refresh)
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const http = require('http');
 const fs = require('fs');
 
-const BACKEND_PORT = 4000;
-const FRONTEND_PORT = 8080;
+// Mode dev dijalankan berdampingan dengan web production yang sedang melayani pasien,
+// jadi port dan file database sengaja berbeda.
+const MODES = {
+  prod: {
+    label: 'PRODUCTION',
+    backendPort: 4000,
+    frontendPort: 8080,
+    nextMode: 'start',
+    dbFile: path.join(__dirname, 'server', 'data', 'vaksinku.sqlite'),
+    // distDir Next.js harus berupa path relatif terhadap folder client
+    nextDir: '.next',
+    envMarker: null,
+  },
+  dev: {
+    label: 'DEVELOPMENT',
+    backendPort: 4001,
+    frontendPort: 8081,
+    nextMode: 'dev',
+    dbFile: path.join(__dirname, 'server', 'data', 'vaksinku-dev.sqlite'),
+    nextDir: '.next-dev',
+    envMarker: path.join(__dirname, 'server', '.env.local'),
+  },
+};
+
+const isDev = process.argv.includes('--dev') || process.env.MODE === 'dev';
+const MODE = isDev ? MODES.dev : MODES.prod;
+const BACKEND_PORT = MODE.backendPort;
+const FRONTEND_PORT = MODE.frontendPort;
+const USE_COLOR = process.stdout.isTTY;
+const color = (code, text) => (USE_COLOR ? `\x1b[${code}m${text}\x1b[0m` : text);
+const cyan = (t) => color('36', t);
+const yellow = (t) => color('33', t);
+const green = (t) => color('32', t);
+const red = (t) => color('31', t);
 
 function logBanner(title, lines = []) {
   console.log('\n====================================================================');
@@ -47,6 +82,20 @@ function killPortProcess(port) {
   }
 }
 
+function isPortInUse(port) {
+  const { promise, resolve } = Promise.withResolvers();
+  const req = http.get(`http://127.0.0.1:${port}/api/auth/profile`, (res) => {
+    res.resume();
+    resolve(true);
+  });
+  req.on('error', () => resolve(false));
+  req.setTimeout(1500, () => {
+    req.destroy();
+    resolve(false);
+  });
+  return promise;
+}
+
 function checkPortReady(port, timeoutMs = 15000) {
   const { promise, resolve } = Promise.withResolvers();
   const startTime = Date.now();
@@ -84,18 +133,53 @@ function openBrowser(url) {
 }
 
 async function main() {
-  logBanner('SIMKLINIK - KLINIK UTAMA DR. H. A. ROTINSULU CIANJUR', [
-    'Sistem Informasi Manajemen Pelayanan Klinik (Vaksinasi, ICV, MCU & Layanan Medis)',
-    'Menyiapkan lingkungan aplikasi...'
-  ]);
+  logBanner(
+    isDev
+      ? cyan('SIMKLINIK - MODE DEVELOPMENT (TERPISAH DARI WEB PRODUCTION)')
+      : green('SIMKLINIK - MODE PRODUCTION - KLINIK UTAMA DR. H. A. ROTINSULU CIANJUR'),
+    isDev
+      ? [
+          `Frontend dev : http://localhost:${FRONTEND_PORT}`,
+          `Backend dev  : http://localhost:${BACKEND_PORT}`,
+          'Database     : server/data/vaksinku-dev.sqlite (terpisah dari production)',
+          'Web production di port 8080 tetap berjalan dan tidak terpengaruh.',
+        ]
+      : [
+          'Sistem Informasi Manajemen Pelayanan Klinik (Vaksinasi, ICV, MCU & Layanan Medis)',
+          'Menyiapkan lingkungan aplikasi...',
+        ]
+  );
 
-  // 1. Bersihkan port jika ada proses yang menggantung
-  console.log('[1/4] Memeriksa dan membersihkan port 8080 dan 4000...');
+  // 1. Bersihkan port milik mode ini saja (mode lain dibiarkan berjalan)
+  console.log(`[1/4] Memeriksa port ${FRONTEND_PORT} dan ${BACKEND_PORT}...`);
   killPortProcess(FRONTEND_PORT);
   killPortProcess(BACKEND_PORT);
-  console.log('      [OK] Port 8080 dan 4000 bersih dan siap digunakan.\n');
+  if (!isDev) {
+    // Konfirmasi mode dev tidak ikut terbawa saat start production
+    const devBackendAlive = await isPortInUse(MODES.dev.backendPort);
+    if (devBackendAlive) {
+      console.log(`      [INFO] Mode development masih berjalan di port ${MODES.dev.frontendPort}/${MODES.dev.backendPort}.`);
+    }
+  } else {
+    const prodBackendAlive = await isPortInUse(MODES.prod.backendPort);
+    console.log(
+      prodBackendAlive
+        ? yellow(`      [INFO] Web production aktif di port ${MODES.prod.frontendPort}. Tidak akan diganggu.`)
+        : yellow('      [INFO] Web production tidak sedang berjalan.')
+    );
+  }
+  console.log(`      [OK] Port ${FRONTEND_PORT} dan ${BACKEND_PORT} siap digunakan.\n`);
+
   const serverDir = path.join(__dirname, 'server');
   const clientDir = path.join(__dirname, 'client');
+
+  // Penanda mode untuk DatabaseService (dev -> vaksinku-dev.sqlite).
+  // `next dev` juga membaca file ini, jadi isinya hanya NEXT_DIST_DIR yang netral.
+  if (MODE.envMarker) {
+    if (!fs.existsSync(MODE.envMarker)) {
+      fs.writeFileSync(MODE.envMarker, '# Dibuat otomatis oleh runner.js untuk mode development\n');
+    }
+  }
 
   // Pastikan dependensi terpasang
   if (!fs.existsSync(path.join(serverDir, 'node_modules'))) {
@@ -107,25 +191,32 @@ async function main() {
     execSync('npm install', { cwd: clientDir, stdio: 'inherit' });
   }
 
-  // Pastikan backend sudah ter-build
-  const serverDist = path.join(serverDir, 'dist', 'main.js');
-  if (!fs.existsSync(serverDist)) {
-    console.log('      [BUILD] Mengompilasi backend NestJS (npm run build)...');
-    execSync('npm run build', { cwd: serverDir, stdio: 'inherit' });
-  }
-
   // 2. Jalankan Backend NestJS
   console.log('[2/4] Menjalankan Backend Service (NestJS)...');
-  const backend = spawn(process.execPath, ['dist/main.js'], {
-    cwd: serverDir,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PORT: String(BACKEND_PORT) },
-  });
+  const serverDist = path.join(serverDir, 'dist', 'main.js');
+  const backendEntry = isDev || !fs.existsSync(serverDist) ? null : serverDist;
+  if (!backendEntry) {
+    console.log('      [INFO] Menjalankan backend dari source (ts-node), tanpa menyentuh dist production.');
+  }
+  const backend = spawn(
+    process.execPath,
+    backendEntry
+      ? [backendEntry]
+      : ['node_modules/ts-node/dist/bin.js', path.join(serverDir, 'src', 'main.ts')],
+    {
+      cwd: serverDir,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PORT: String(BACKEND_PORT), NODE_ENV: isDev ? 'development' : 'production' },
+    }
+  );
 
   backend.stdout.on('data', (d) => {
     const str = d.toString();
-    if (str.includes('Backend SIMKlinik Server Aktif') || str.includes('Backend VaksinKU Server Aktif') || str.includes('Nest application successfully started')) {
+    if (str.includes('Backend SIMKlinik Server Aktif') || str.includes('Nest application successfully started')) {
       process.stdout.write(`      [OK] ${str.trim()}\n`);
+    }
+    if (isDev && (str.includes('Error') || str.includes('error TS'))) {
+      process.stdout.write(`${red('      [Backend Log]: ')}${str}`);
     }
   });
   backend.stderr.on('data', (d) => {
@@ -136,54 +227,80 @@ async function main() {
   });
 
   // Tunggu backend siap
-  const isBackendReady = await checkPortReady(BACKEND_PORT);
+  const isBackendReady = await checkPortReady(BACKEND_PORT, isDev ? 40000 : 15000);
   if (!isBackendReady) {
     console.warn('      [PERINGATAN] Backend memerlukan waktu lebih lama untuk inisialisasi.');
+    if (isDev) {
+      console.warn('      [PERINGATAN] Cek log TypeScript di atas bila ada error kompilasi.');
+    }
   } else {
-    console.log('      [OK] Backend Service aktif pada port 4000.\n');
+    console.log(`      [OK] Backend Service aktif pada port ${BACKEND_PORT}.\n`);
   }
 
   // 3. Ambil IP Jaringan LAN
   const lanIps = getLocalIpAddresses();
   const primaryIp = lanIps[0] || '127.0.0.1';
 
-  // 4. Jalankan Frontend Next.js (Dukungan Mode Dev / Prod)
-  const isDev = process.argv.includes('--dev') || process.env.MODE === 'dev';
-  const nextMode = isDev ? 'dev' : 'start';
-  console.log(`[3/4] Menjalankan Frontend Web Portal (Next.js - Mode: ${nextMode.toUpperCase()})...`);
+  // 4. Jalankan Frontend Next.js
+  console.log(`[3/4] Menjalankan Frontend Web Portal (Next.js - Mode: ${MODE.nextMode.toUpperCase()})...`);
   if (isDev) {
     console.log('      [FITUR AKTIF] Fast Refresh / Auto-Reload saat edit file .tsx aktif!');
-  }
-  const clientBuildId = path.join(clientDir, '.next', 'BUILD_ID');
-  if (nextMode === 'start' && !fs.existsSync(clientBuildId)) {
-    console.log('      [BUILD] Build produksi Next.js belum ada / ditimpa mode dev.');
-    console.log('      [BUILD] Menjalankan kompilasi frontend (npm run build)...');
-    execSync('npm run build', { cwd: clientDir, stdio: 'inherit' });
-    console.log('      [OK] Kompilasi frontend selesai.\n');
+  } else {
+    const clientBuildId = path.join(clientDir, MODE.nextDir, 'BUILD_ID');
+    if (!fs.existsSync(clientBuildId)) {
+      console.log('      [BUILD] Build produksi Next.js belum ada.');
+      console.log('      [BUILD] Menjalankan kompilasi frontend (npm run build)...');
+      execSync('npm run build', {
+        cwd: clientDir,
+        stdio: 'inherit',
+        env: { ...process.env, NEXT_DIST_DIR: MODE.nextDir },
+      });
+      console.log('      [OK] Kompilasi frontend selesai.\n');
+    }
   }
 
   const nextBin = path.join(clientDir, 'node_modules', 'next', 'dist', 'bin', 'next');
+  const frontend = spawn(
+    process.execPath,
+    [nextBin, MODE.nextMode, '-H', '0.0.0.0', '-p', String(FRONTEND_PORT)],
+    {
+      cwd: clientDir,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        BACKEND_PORT: String(BACKEND_PORT),
+        PORT: String(FRONTEND_PORT),
+        NEXT_DIST_DIR: MODE.nextDir,
+      },
+    }
+  );
 
-  const frontend = spawn(process.execPath, [nextBin, nextMode, '-H', '0.0.0.0', '-p', String(FRONTEND_PORT)], {
-    cwd: clientDir,
-    stdio: 'inherit',
-  });
   // 5. Tampilkan Banner Akses
   setTimeout(() => {
-    logBanner('APLIKASI SIMKLINIK ROTINSULU BERHASIL DIJALANKAN!', [
-      `Akses dari Komputer Ini (Server):`,
-      `  -> http://localhost:${FRONTEND_PORT}`,
-      ``,
-      `Akses dari Komputer/Tablet Lain dalam SATU JARINGAN (LAN / Wi-Fi):`,
-      `  -> http://${primaryIp}:${FRONTEND_PORT}`,
-      ``,
-      `Akun Login Staf Klinik:`,
-      `  - Superadmin : Username: superadmin  | Password: admin123`,
-      `  - Dokter     : Username: dokter      | Password: dokter123`,
-      `  - Perawat    : Username: perawat     | Password: perawat123`,
-      ``,
-      `Tekan CTRL + C di jendela ini untuk mematikan seluruh aplikasi.`
-    ]);
+    logBanner(
+      isDev
+        ? cyan('SIMKLINIK MODE DEVELOPMENT BERHASIL DIJALANKAN')
+        : green('APLIKASI SIMKLINIK ROTINSULU BERHASIL DIJALANKAN!'),
+      [
+        `Mode: ${MODE.label}`,
+        `Akses dari Komputer Ini:`,
+        `  -> http://localhost:${FRONTEND_PORT}`,
+        ``,
+        `Akses dari Komputer/Tablet Lain dalam SATU JARINGAN (LAN / Wi-Fi):`,
+        `  -> http://${primaryIp}:${FRONTEND_PORT}`,
+        ``,
+        `Akun Login Staf Klinik:`,
+        `  - Superadmin : Username: superadmin  | Password: admin123`,
+        `  - Dokter     : Username: dokter      | Password: dokter123`,
+        `  - Perawat    : Username: perawat     | Password: perawat123`,
+        ``,
+        isDev
+          ? `Database: server/data/vaksinku-dev.sqlite (web production tidak tersentuh)`
+          : `Database: server/data/vaksinku.sqlite`,
+        ``,
+        `Tekan CTRL + C di jendela ini untuk mematikan aplikasi ${MODE.label}.`,
+      ]
+    );
 
     console.log('[4/4] Membuka peramban browser otomatis...');
     openBrowser(`http://localhost:${FRONTEND_PORT}/login`);
@@ -191,7 +308,7 @@ async function main() {
 
   // Clean exit handlers
   function cleanup() {
-    console.log('\n[INFO] Menghentikan seluruh service SIMKlinik...');
+    console.log(`\n[INFO] Menghentikan seluruh service SIMKlinik (${MODE.label})...`);
     try {
       backend.kill();
       frontend.kill();

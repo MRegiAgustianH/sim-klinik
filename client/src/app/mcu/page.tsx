@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import { apiFetch, getApiBaseUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -22,19 +22,35 @@ import {
   FileText,
   UserCheck,
   ClipboardList,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUp,
+  ChevronsDown,
+  SeparatorHorizontal,
 } from 'lucide-react';
 
 interface McuExamItem {
   id: string;
   name: string;
   value: string;
+  // true = poin ini selalu dimulai di halaman baru saat cetak PDF
+  pageBreakBefore?: boolean;
 }
+
+type McuSectionCode = 'vital' | 'antropo' | 'physical' | 'lab' | 'support';
 
 interface McuExamSection {
   id: string;
+  code: McuSectionCode | null;
   title: string;
   items: McuExamItem[];
+  // true = seluruh kategori dimulai di halaman baru saat cetak PDF
+  pageBreakBefore?: boolean;
 }
+
+type ConclusionType = 'Fit' | 'Fit dengan catatan' | 'Temporary unfit' | 'Unfit';
+
+const CONCLUSION_OPTIONS: ConclusionType[] = ['Fit', 'Fit dengan catatan', 'Temporary unfit', 'Unfit'];
 
 interface McuReportItem {
   id: number;
@@ -52,7 +68,7 @@ interface McuReportItem {
   labExam: string | null;
   supportingExam: string | null;
   examinationSections: string | null;
-  conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';
+  conclusionType: ConclusionType | 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit';
   conclusionNotes: string | null;
   recommendations: string | null;
   doctorName: string;
@@ -61,69 +77,135 @@ interface McuReportItem {
   updatedAt: string;
 }
 
-const DEFAULT_EXAM_SECTIONS: McuExamSection[] = [
-  {
-    id: 'sec_vital',
-    title: 'A. TANDA VITAL',
-    items: [
-      { id: 'vital_bp', name: 'Tekanan Darah', value: '120/80 mmHg' },
-      { id: 'vital_pulse', name: 'Nadi', value: '80 x/menit' },
-      { id: 'vital_resp', name: 'Pernafasan', value: '18 x/menit' },
-      { id: 'vital_temp', name: 'Suhu', value: '36.5 °C' },
-      { id: 'vital_cons', name: 'Kesadaran', value: 'Compos Mentis' },
-    ],
-  },
-  {
-    id: 'sec_antropo',
-    title: 'B. ANTROPOMETRI',
-    items: [
-      { id: 'antropo_weight', name: 'Berat Badan (BB)', value: '60 kg' },
-      { id: 'antropo_height', name: 'Tinggi Badan (TB)', value: '165 cm' },
-      { id: 'antropo_bmi', name: 'IMT / BMI', value: '22.0' },
-      { id: 'antropo_nutrition', name: 'Status Gizi', value: 'Normal' },
-    ],
-  },
-  {
-    id: 'sec_physical',
-    title: 'C. PEMERIKSAAN FISIK',
-    items: [
-      { id: 'phy_gen', name: 'Keadaan Umum', value: 'Baik' },
-      { id: 'phy_head', name: 'Kepala', value: 'Normal' },
-      { id: 'phy_eyes', name: 'Mata & Visus', value: 'Visus OD 20/20, OS 20/20' },
-      { id: 'phy_color', name: 'Buta Warna', value: 'Tidak Buta Warna' },
-      { id: 'phy_teeth', name: 'Gigi & Mulut', value: 'Normal' },
-      { id: 'phy_ent', name: 'Telinga, Hidung, Tenggorokan', value: 'Normal' },
-      { id: 'phy_neck', name: 'Leher', value: 'Normal' },
-      { id: 'phy_heart', name: 'Jantung', value: 'Bunyi jantung reguler, tidak ada murmur' },
-      { id: 'phy_lungs', name: 'Paru paru', value: 'Suara nafas vesikuler, tidak ada ronkhi/wheezing' },
-      { id: 'phy_abdomen', name: 'Abdomen', value: 'Lunak, tidak ada nyeri tekan' },
-      { id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: 'Tidak ada edema, kekuatan otot baik' },
-    ],
-  },
-  {
-    id: 'sec_lab',
-    title: 'D. PEMERIKSAAN LABORATORIUM',
-    items: [
-      { id: 'lab_blood', name: 'Darah Lengkap', value: 'Dalam batas normal' },
-      { id: 'lab_urine', name: 'Urine Lengkap', value: 'Dalam batas normal' },
-      { id: 'lab_chem', name: 'Kimia Darah', value: 'Dalam batas normal' },
-      { id: 'lab_lipid', name: 'Profil Lipid & Fungsi Hati', value: 'Dalam batas normal' },
-      { id: 'lab_hbsag', name: 'HBsAg', value: 'Negatif' },
-      { id: 'lab_drug', name: 'Tes NAFZA', value: 'Negatif' },
-    ],
-  },
-  {
-    id: 'sec_sup',
-    title: 'E. PEMERIKSAAN PENUNJANG',
-    items: [
-      { id: 'sup_xray', name: 'Rontgen Thorax', value: 'Cor dan Pulmo dalam batas normal, tidak tampak kelainan aktif.' },
-      { id: 'sup_ekg', name: 'EKG', value: 'Normal Sinus Rhythm' },
-      { id: 'sup_treadmill', name: 'Threadmill', value: 'Normal' },
-      { id: 'sup_audio', name: 'Audiometri', value: 'Dalam batas normal' },
-      { id: 'sup_spiro', name: 'Spirometri', value: 'Normal' },
-    ],
-  },
-];
+const MCU_SECTION_LABELS: Record<McuSectionCode, string> = {
+  vital: 'TANDA VITAL',
+  antropo: 'ANTROPOMETRI',
+  physical: 'PEMERIKSAAN FISIK',
+  lab: 'PEMERIKSAAN LABORATORIUM',
+  support: 'PEMERIKSAAN PENUNJANG',
+};
+
+// Partikel yang tetap huruf kecil saat judul ditulis kapital
+const TITLE_PARTICLES = new Set(['dan', 'di', 'ke', 'dari', 'pada', 'untuk', 'yang', 'atau']);
+
+const formatSectionTitle = (label: string, index: number) => {
+  const text = label
+    .split(' ')
+    .map((w, i) => (i > 0 && TITLE_PARTICLES.has(w.toLowerCase()) ? w.toLowerCase() : w))
+    .join(' ');
+  return `${String.fromCharCode(65 + index)}. ${text}`;
+};
+
+const sectionCodeOf = (sec: { code?: string | null; id?: string }): McuSectionCode | null => {
+  const candidates = [sec.code, (sec.id || '').replace(/^sec_/, '')];
+  const found = candidates.find((c): c is McuSectionCode =>
+    !!c && Object.prototype.hasOwnProperty.call(MCU_SECTION_LABELS, c)
+  );
+  return found ?? null;
+};
+
+// Nomor huruf (A, B, C...) selalu dihitung ulang sesuai urutan tampil, agar bisa dipindah bebas
+const withRenumberedTitles = (list: McuExamSection[]): McuExamSection[] =>
+  list.map((sec, idx) => ({
+    ...sec,
+    code: sec.code ?? sectionCodeOf(sec),
+    title: formatSectionTitle(sec.code ? MCU_SECTION_LABELS[sec.code] : sec.title, idx),
+  }));
+
+const buildDefaultSections = (): McuExamSection[] =>
+  withRenumberedTitles([
+    {
+      id: 'sec_vital',
+      code: 'vital',
+      title: '',
+      items: [
+        { id: 'vital_bp', name: 'Tekanan Darah', value: '120/80 mmHg' },
+        { id: 'vital_pulse', name: 'Nadi', value: '80 x/menit' },
+        { id: 'vital_resp', name: 'Pernafasan', value: '18 x/menit' },
+        { id: 'vital_temp', name: 'Suhu', value: '36.5 °C' },
+        { id: 'vital_cons', name: 'Kesadaran', value: 'Compos Mentis' },
+      ],
+    },
+    {
+      id: 'sec_antropo',
+      code: 'antropo',
+      title: '',
+      items: [
+        { id: 'antropo_weight', name: 'Berat Badan (BB)', value: '60 kg' },
+        { id: 'antropo_height', name: 'Tinggi Badan (TB)', value: '165 cm' },
+        { id: 'antropo_bmi', name: 'IMT / BMI', value: '22.0' },
+        { id: 'antropo_nutrition', name: 'Status Gizi', value: 'Normal' },
+      ],
+    },
+    {
+      id: 'sec_physical',
+      code: 'physical',
+      title: '',
+      items: [
+        { id: 'phy_gen', name: 'Keadaan Umum', value: 'Baik' },
+        { id: 'phy_head', name: 'Kepala', value: 'Normal' },
+        { id: 'phy_eyes', name: 'Mata & Visus', value: 'Visus OD 20/20, OS 20/20' },
+        { id: 'phy_color', name: 'Buta Warna', value: 'Tidak Buta Warna' },
+        { id: 'phy_teeth', name: 'Gigi & Mulut', value: 'Normal' },
+        { id: 'phy_ent', name: 'Telinga, Hidung, Tenggorokan', value: 'Normal' },
+        { id: 'phy_neck', name: 'Leher', value: 'Normal' },
+        { id: 'phy_heart', name: 'Jantung', value: 'Bunyi jantung reguler, tidak ada murmur' },
+        { id: 'phy_lungs', name: 'Paru paru', value: 'Suara nafas vesikuler, tidak ada ronkhi/wheezing' },
+        { id: 'phy_abdomen', name: 'Abdomen', value: 'Lunak, tidak ada nyeri tekan' },
+        { id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: 'Tidak ada edema, kekuatan otot baik' },
+      ],
+    },
+    {
+      id: 'sec_lab',
+      code: 'lab',
+      title: '',
+      items: [
+        { id: 'lab_blood', name: 'Darah Lengkap', value: 'Dalam batas normal' },
+        { id: 'lab_urine', name: 'Urine Lengkap', value: 'Dalam batas normal' },
+        { id: 'lab_fasting_glucose', name: 'Gula Puasa', value: 'Dalam batas normal' },
+        { id: 'lab_lipid', name: 'Profil Lipid', value: 'Dalam batas normal' },
+        { id: 'lab_liver', name: 'Fungsi Hati', value: 'Dalam batas normal' },
+        { id: 'lab_kidney', name: 'Faal Ginjal', value: 'Dalam batas normal' },
+        { id: 'lab_hbsag', name: 'HBsAg', value: 'Negatif' },
+        { id: 'lab_drug_test', name: 'Tes NAPZA', value: 'Negatif' },
+      ],
+    },
+    {
+      id: 'sec_sup',
+      code: 'support',
+      title: '',
+      items: [
+        {
+          id: 'sup_xray',
+          name: 'Rontgen Thorax',
+          value: 'Tidak tampak TBC paru aktif/pneumonia, Tidak tampak kardiomegali',
+        },
+        { id: 'sup_ekg', name: 'EKG', value: 'Normal Sinus Rhythm' },
+        { id: 'sup_treadmill', name: 'Threadmill', value: 'Normal' },
+        { id: 'sup_audio', name: 'Audiometri', value: 'Dalam batas normal' },
+        { id: 'sup_spiro', name: 'Spirometri', value: 'Normal' },
+      ],
+    },
+  ]);
+
+const DEFAULT_EXAM_SECTIONS: McuExamSection[] = buildDefaultSections();
+
+// Laporan lama masih memakai istilah Sehat / Sehat dengan catatan
+const normalizeConclusionType = (t?: string | null): ConclusionType => {
+  if (t === 'Sehat' || t === 'Fit') return 'Fit';
+  if (t === 'Sehat dengan catatan' || t === 'Fit dengan catatan') return 'Fit dengan catatan';
+  if (t === 'Temporary Unfit' || t === 'Temporary unfit') return 'Temporary unfit';
+  return 'Unfit';
+};
+
+// Poin pemeriksaan utama yang ikut urutan kustom (dipakai navigasi ↑ ↓)
+const REORDERABLE_LABELS: Record<McuSectionCode, string> = {
+  vital: 'Tanda Vital',
+  antropo: 'Antropometri',
+  physical: 'Pemeriksaan Fisik',
+  lab: 'Pemeriksaan Laboratorium',
+  support: 'Pemeriksaan Penunjang',
+};
 
 const SUGGESTED_EXAMS = [
   'USG Abdomen',
@@ -156,8 +238,32 @@ interface PaginatedPage {
     sectionTitle: string;
     items: McuExamItem[];
   }[];
+  // true = baris "Dilanjutkan di halaman berikutnya" ikut dicetak
+  overflowPending?: boolean;
+  promptContinue?: boolean;
   hasConclusionAndSign: boolean;
 }
+
+// Tinggi ruang untuk penanda halaman berikutnya (termasuk jarak ke footer)
+const CONTINUE_PROMPT_HEIGHT = 26;
+
+// Harus sama dengan geometri di server/src/mcu/mcu.service.ts (generateMcuPdf).
+// Pratinjau memakai satuan px dengan 1px = 1pt PDF, jadi ukuran font & jarak bisa disamakan.
+const PDF_LAYOUT = {
+  pageWidth: 595,
+  pageHeight: 842,
+  leftMargin: 85,
+  printableWidth: 425,
+  headerTop: 20,
+  headerHeight: Math.round(425 * (401 / 1295)),
+  contentTop: 20 + Math.round(425 * (401 / 1295)) + 10,
+  maxContentY: 745,
+  pointIndent: 8,
+  pointLabelWidth: 155,
+  pointValueWidth: 425 - 155 - 12,
+  pointRowMinHeight: 16,
+  idValueWidth: 425 - 145 - 10,
+};
 
 export default function McuPage() {
   const { user, hasRole } = useAuth();
@@ -187,7 +293,7 @@ export default function McuPage() {
     address: 'Cianjur, Jawa Barat',
     examDate: new Date().toISOString().split('T')[0],
     purpose: 'MCU Kerja',
-    conclusionType: 'Sehat' as 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit',
+    conclusionType: 'Fit' as ConclusionType,
     conclusionNotes: '',
     temporaryUnfitNotes: '',
     unfitNotes: '',
@@ -200,6 +306,7 @@ export default function McuPage() {
   const [sections, setSections] = useState<McuExamSection[]>(DEFAULT_EXAM_SECTIONS);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const fetchReports = useCallback(async () => {
     try {
@@ -235,7 +342,7 @@ export default function McuPage() {
       address: 'Cianjur, Jawa Barat',
       examDate: new Date().toISOString().split('T')[0],
       purpose: 'MCU Kerja',
-      conclusionType: 'Sehat',
+      conclusionType: 'Fit',
       conclusionNotes: '',
       temporaryUnfitNotes: '',
       unfitNotes: '',
@@ -243,7 +350,7 @@ export default function McuPage() {
       doctorName: user?.fullName?.startsWith('dr') ? user.fullName : 'dr. Arinda Puteri P',
       doctorSip: 'SIP.MR32032507002898',
     });
-    setSections(JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    setSections(buildDefaultSections());
     setActiveFormTab('patient');
     setActivePreviewPage('all');
     setIsEditorOpen(true);
@@ -272,9 +379,9 @@ export default function McuPage() {
       address: r.address || '',
       examDate: r.examDate,
       purpose: r.purpose || 'MCU Kerja',
-      conclusionType: r.conclusionType,
+      conclusionType: normalizeConclusionType(r.conclusionType),
       conclusionNotes: r.conclusionNotes || '',
-      temporaryUnfitNotes: r.conclusionType === 'Temporary Unfit' ? r.conclusionNotes || '' : '',
+      temporaryUnfitNotes: normalizeConclusionType(r.conclusionType) === 'Temporary unfit' ? r.conclusionNotes || '' : '',
       unfitNotes: r.conclusionType === 'Unfit' ? r.conclusionNotes || '' : '',
       recommendations: recsText,
       doctorName: r.doctorName,
@@ -316,14 +423,14 @@ export default function McuPage() {
       if (vital.respiration) secVital.push({ id: 'vital_resp', name: 'Pernafasan', value: vital.respiration });
       if (vital.temperature) secVital.push({ id: 'vital_temp', name: 'Suhu', value: vital.temperature });
       if (vital.consciousness) secVital.push({ id: 'vital_cons', name: 'Kesadaran', value: vital.consciousness });
-      if (secVital.length > 0) parsedSections.push({ id: 'sec_vital', title: 'A. TANDA VITAL', items: secVital });
+      if (secVital.length > 0) parsedSections.push({ id: 'sec_vital', code: 'vital', title: 'A. TANDA VITAL', items: secVital });
 
       const secAntropo: McuExamItem[] = [];
       if (antropo.weight) secAntropo.push({ id: 'antropo_weight', name: 'Berat Badan (BB)', value: antropo.weight });
       if (antropo.height) secAntropo.push({ id: 'antropo_height', name: 'Tinggi Badan (TB)', value: antropo.height });
       if (antropo.bmi) secAntropo.push({ id: 'antropo_bmi', name: 'IMT / BMI', value: antropo.bmi });
       if (antropo.nutritionStatus) secAntropo.push({ id: 'antropo_nutrition', name: 'Status Gizi', value: antropo.nutritionStatus });
-      if (secAntropo.length > 0) parsedSections.push({ id: 'sec_antropo', title: 'B. ANTROPOMETRI', items: secAntropo });
+      if (secAntropo.length > 0) parsedSections.push({ id: 'sec_antropo', code: 'antropo', title: 'B. ANTROPOMETRI', items: secAntropo });
 
       const secPhysical: McuExamItem[] = [];
       if (physical.generalCondition) secPhysical.push({ id: 'phy_gen', name: 'Keadaan Umum', value: physical.generalCondition });
@@ -337,16 +444,18 @@ export default function McuPage() {
       if (physical.lungs) secPhysical.push({ id: 'phy_lungs', name: 'Paru paru', value: physical.lungs });
       if (physical.abdomen) secPhysical.push({ id: 'phy_abdomen', name: 'Abdomen', value: physical.abdomen });
       if (physical.extremities) secPhysical.push({ id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: physical.extremities });
-      if (secPhysical.length > 0) parsedSections.push({ id: 'sec_physical', title: 'C. PEMERIKSAAN FISIK', items: secPhysical });
+      if (secPhysical.length > 0) parsedSections.push({ id: 'sec_physical', code: 'physical', title: 'C. PEMERIKSAAN FISIK', items: secPhysical });
 
       const secLab: McuExamItem[] = [];
       if (lab.completeBlood) secLab.push({ id: 'lab_blood', name: 'Darah Lengkap', value: lab.completeBlood });
       if (lab.completeUrine) secLab.push({ id: 'lab_urine', name: 'Urine Lengkap', value: lab.completeUrine });
-      if (lab.bloodChemistry) secLab.push({ id: 'lab_chem', name: 'Kimia Darah', value: lab.bloodChemistry });
-      if (lab.additionalLab) secLab.push({ id: 'lab_add', name: 'Profil Lipid & Fungsi Hati', value: lab.additionalLab });
+      if (lab.fastingGlucose) secLab.push({ id: 'lab_fasting_glucose', name: 'Gula Puasa', value: lab.fastingGlucose });
+      if (lab.lipidProfile) secLab.push({ id: 'lab_lipid', name: 'Profil Lipid', value: lab.lipidProfile });
+      if (lab.liverFunction) secLab.push({ id: 'lab_liver', name: 'Fungsi Hati', value: lab.liverFunction });
+      if (lab.kidneyFunction) secLab.push({ id: 'lab_kidney', name: 'Faal Ginjal', value: lab.kidneyFunction });
       if (lab.hbsag) secLab.push({ id: 'lab_hbsag', name: 'HBsAg', value: lab.hbsag });
-      if (lab.drugTest) secLab.push({ id: 'lab_drug', name: 'Tes NAFZA', value: lab.drugTest });
-      if (secLab.length > 0) parsedSections.push({ id: 'sec_lab', title: 'D. PEMERIKSAAN LABORATORIUM', items: secLab });
+      if (lab.drugTest) secLab.push({ id: 'lab_drug_test', name: 'Tes NAPZA', value: lab.drugTest });
+      if (secLab.length > 0) parsedSections.push({ id: 'sec_lab', code: 'lab', title: 'D. PEMERIKSAAN LABORATORIUM', items: secLab });
 
       const secSup: McuExamItem[] = [];
       if (supporting.thoraxXray) secSup.push({ id: 'sup_xray', name: 'Rontgen Thorax', value: supporting.thoraxXray });
@@ -354,10 +463,12 @@ export default function McuPage() {
       if (supporting.treadmill) secSup.push({ id: 'sup_treadmill', name: 'Threadmill', value: supporting.treadmill });
       if (supporting.audiometry) secSup.push({ id: 'sup_audio', name: 'Audiometri', value: supporting.audiometry });
       if (supporting.spirometry) secSup.push({ id: 'sup_spiro', name: 'Spirometri', value: supporting.spirometry });
-      if (secSup.length > 0) parsedSections.push({ id: 'sec_sup', title: 'E. PEMERIKSAAN PENUNJANG', items: secSup });
+      if (secSup.length > 0) parsedSections.push({ id: 'sec_sup', code: 'support', title: 'E. PEMERIKSAAN PENUNJANG', items: secSup });
     }
 
-    setSections(parsedSections.length > 0 ? parsedSections : JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    setSections(
+      withRenumberedTitles(parsedSections.length > 0 ? parsedSections : buildDefaultSections())
+    );
     setActiveFormTab('patient');
     setActivePreviewPage('all');
     setIsEditorOpen(true);
@@ -399,24 +510,90 @@ export default function McuPage() {
     );
   };
 
+  // Pindah urutan kategori & sub-poin pemeriksaan (huruf judul dihitung ulang otomatis)
+  const moveSection = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= sections.length) return;
+    const targetId = sections[target].id; // simpan sebelum state berubah
+    setSections((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      // withRenumberedTitles membawa seluruh properti section, termasuk pageBreakBefore
+      return withRenumberedTitles(next);
+    });
+    sectionRefs.current[targetId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+
+  const moveSectionToEdge = (index: number, edge: 'top' | 'bottom') => {
+    const target = edge === 'top' ? 0 : sections.length - 1;
+    if (index === target) return;
+    setSections((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return withRenumberedTitles(next);
+    });
+  };
+
+  const moveItem = (sectionId: string, index: number, direction: -1 | 1) => {
+    setSections((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        const target = index + direction;
+        if (target < 0 || target >= sec.items.length) return sec;
+        const items = [...sec.items];
+        // Flag pageBreakBefore menempel pada poin dan ikut berpindah bersamanya
+        [items[index], items[target]] = [items[target], items[index]];
+        return { ...sec, items };
+      })
+    );
+  };
+
+  // Paksa kategori dimulai di halaman baru saat cetak PDF
+  const toggleSectionPageBreak = (sectionId: string) => {
+    setSections((prev) => prev.map((sec) => (sec.id === sectionId ? { ...sec, pageBreakBefore: !sec.pageBreakBefore } : sec)));
+  };
+
+  // Paksa satu sub-poin dimulai di halaman baru saat cetak PDF
+  const toggleItemPageBreak = (sectionId: string, itemId: string) => {
+    setSections((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        return {
+          ...sec,
+          items: sec.items.map((it) => (it.id === itemId ? { ...it, pageBreakBefore: !it.pageBreakBefore } : it)),
+        };
+      })
+    );
+  };
+
   const handleAddSection = () => {
     if (!newCategoryName.trim()) return;
-    const newSec: McuExamSection = {
-      id: `sec_${Date.now()}`,
-      title: newCategoryName.trim(),
-      items: [{ id: `item_${Date.now()}`, name: '', value: '' }],
-    };
-    setSections((prev) => [...prev, newSec]);
+    setSections((prev) =>
+      withRenumberedTitles([
+        ...prev,
+        {
+          id: `sec_${Date.now()}`,
+          code: null,
+          title: newCategoryName.trim(),
+          items: [{ id: `item_${Date.now()}`, name: '', value: '' }],
+        },
+      ])
+    );
     setNewCategoryName('');
     setIsAddingCategory(false);
   };
 
+  const handleRenameSection = (sectionId: string, title: string) => {
+    setSections((prev) => prev.map((sec) => (sec.id === sectionId ? { ...sec, title } : sec)));
+  };
+
   const handleRemoveSection = (sectionId: string) => {
-    setSections((prev) => prev.filter((sec) => sec.id !== sectionId));
+    setSections((prev) => withRenumberedTitles(prev.filter((sec) => sec.id !== sectionId)));
   };
 
   const handleResetToStandard = () => {
-    setSections(JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    setSections(buildDefaultSections());
     success('Template pemeriksaan standar berhasil dimuat.');
   };
 
@@ -429,7 +606,7 @@ export default function McuPage() {
 
     try {
       let finalConclusionNotes = formData.conclusionNotes;
-      if (formData.conclusionType === 'Temporary Unfit') {
+      if (formData.conclusionType === 'Temporary unfit') {
         finalConclusionNotes = formData.temporaryUnfitNotes;
       } else if (formData.conclusionType === 'Unfit') {
         finalConclusionNotes = formData.unfitNotes;
@@ -511,89 +688,171 @@ export default function McuPage() {
     return sections.reduce((acc, s) => acc + s.items.length, 0);
   }, [sections]);
 
-  // Real-time dynamic pagination algorithm for live preview
+  // Paginasi pratinjau: menghitung tinggi dalam satuan pt, mengikuti geometri PDF server
+  // (generateMcuPdf di mcu.service.ts): margin 3 cm, font Arial 11 pt, header ~132 pt.
   const paginatedPages = useMemo<PaginatedPage[]>(() => {
+    const lineHeight = 11 * 1.15; // tinggi baris Arial 11 pt di pdfkit (lineGap 0)
+
+    // Estimasi lebar teks Arial 11 pt (rata-rata ~0.5 em per karakter)
+    const estimateLines = (text: string, maxWidth: number) => {
+      const charsPerLine = Math.max(1, Math.floor(maxWidth / (11 * 0.5)));
+      let lines = 0;
+      for (const paragraph of (text || '').split('\n')) {
+        let current = 0;
+        let paraLines = 1;
+        for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+          const wordLen = word.length + 1;
+          if (current > 0 && current + wordLen > charsPerLine) {
+            paraLines++;
+            current = wordLen;
+          } else {
+            current += wordLen;
+          }
+        }
+        lines += Math.max(1, paraLines);
+      }
+      return lines;
+    };
+
+    const pointRowHeight = (name: string, value: string) => {
+      const valLines = estimateLines(`: ${value || '-'}`, PDF_LAYOUT.pointValueWidth);
+      const nameLines = estimateLines(name, PDF_LAYOUT.pointLabelWidth);
+      return Math.max(PDF_LAYOUT.pointRowMinHeight, Math.max(valLines, nameLines) * lineHeight + 3);
+    };
+
+    const sectionTitleHeight = 11.5 * 1.15 + 3;
+    const idTableHeight =
+      11 * 1.15 + 4 +
+      [
+        formData.patientName,
+        formData.ageGender,
+        formData.birthDate || '-',
+        formData.address || '-',
+        formData.examDate,
+        formData.purpose || 'MCU kerja',
+      ].reduce((acc, v) => acc + Math.max(16, estimateLines(v, PDF_LAYOUT.idValueWidth) * lineHeight + 3), 0) +
+      2;
+    const titleHeight = 2 * (12 * 1.15) + 6;
+
+    const recommendationLines = formData.recommendations
+      .split('\n')
+      .filter((s) => s.trim() !== '');
+    const conclusionHeight =
+      sectionTitleHeight + 2 +
+      CONCLUSION_OPTIONS.length * 16 +
+      8 +
+      sectionTitleHeight +
+      3 +
+      Math.max(1, recommendationLines.length) * lineHeight +
+      10 +
+      6 + 80;
+    // PDF memakai checkPageBreak(210) sebelum blok kesimpulan
+    const PDF_CONCLUSION_RESERVE = 210;
+
+    let currentY = PDF_LAYOUT.contentTop + titleHeight + idTableHeight;
     let currentPageNumber = 1;
-    // Budget Halaman 1: ruang aman setelah Header, Judul & Tabel Identitas (~290px)
-    let currentRemainingHeight = 290;
     let currentSectionsInPage: { sectionTitle: string; items: McuExamItem[] }[] = [];
+    let currentSectionChunk: { sectionTitle: string; items: McuExamItem[] } | null = null;
+    let pageHasContent = false;
+    let pageOverflowPending = false;
     const pages: PaginatedPage[] = [];
 
-    sections.forEach((sec) => {
-      const validItems = sec.items.filter((it) => it.name.trim() !== '' || it.value.trim() !== '');
-      if (validItems.length === 0) return;
-
-      let currentSectionChunk: { sectionTitle: string; items: McuExamItem[] } = {
-        sectionTitle: sec.title,
-        items: [],
-      };
-      let sectionTitleAdded = false;
-
-      validItems.forEach((item) => {
-        // Perhitungan tinggi baris item riil
-        const valueLength = item.value?.length || 0;
-        const lineCount = Math.max(1, Math.ceil(valueLength / 45));
-        const itemHeight = lineCount * 18 + 2; // ~20px per baris teks tunggal
-        const neededHeight = (!sectionTitleAdded ? 28 : 0) + itemHeight;
-
-        if (currentRemainingHeight < neededHeight) {
-          if (currentSectionChunk.items.length > 0) {
-            currentSectionsInPage.push(currentSectionChunk);
-          }
-          pages.push({
-            pageNumber: currentPageNumber,
-            isFirstPage: currentPageNumber === 1,
-            sections: currentSectionsInPage,
-            hasConclusionAndSign: false,
-          });
-          currentPageNumber++;
-          // Budget Halaman 2+: ruang aman di bawah Header gambar (~530px)
-          currentRemainingHeight = 530;
-          currentSectionsInPage = [];
-          currentSectionChunk = { sectionTitle: `${sec.title} (Lanjutan)`, items: [] };
-          sectionTitleAdded = false;
-        }
-
-        if (!sectionTitleAdded) {
-          currentRemainingHeight -= 28;
-          sectionTitleAdded = true;
-        }
-        currentSectionChunk.items.push(item);
-        currentRemainingHeight -= itemHeight;
-      });
-
-      if (currentSectionChunk.items.length > 0) {
+    const closeChunk = () => {
+      if (currentSectionChunk && currentSectionChunk.items.length > 0) {
         currentSectionsInPage.push(currentSectionChunk);
       }
-      currentRemainingHeight -= 10;
-    });
+      currentSectionChunk = null;
+    };
 
-    // Pengecekan ruang untuk Kesimpulan + Saran + TTD (memerlukan ~235px)
-    if (currentRemainingHeight >= 235) {
+    const pushCurrentPage = (hasConclusionAndSign: boolean) => {
+      closeChunk();
       pages.push({
         pageNumber: currentPageNumber,
         isFirstPage: currentPageNumber === 1,
         sections: currentSectionsInPage,
-        hasConclusionAndSign: true,
+        overflowPending: pageOverflowPending,
+        promptContinue: false,
+        hasConclusionAndSign,
       });
+    };
+
+    const startNewPage = () => {
+      pushCurrentPage(false);
+      currentPageNumber++;
+      currentSectionsInPage = [];
+      currentSectionChunk = null;
+      pageHasContent = false;
+      pageOverflowPending = false;
+      currentY = PDF_LAYOUT.contentTop;
+    };
+
+    for (const sec of sections) {
+      const validItems = sec.items.filter((it) => it.name.trim() !== '' || it.value.trim() !== '');
+      if (validItems.length === 0) continue;
+
+      // PDF: `if ((pageBreakBefore && hasExamOnPage) || y + 40 > maxY) addPage()`
+      // hasExamOnPage setara pageHasContent pada pratinjau.
+      if (pageHasContent && (sec.pageBreakBefore || currentY + 40 > PDF_LAYOUT.maxContentY)) {
+        startNewPage();
+      }
+
+      currentSectionChunk = { sectionTitle: sec.title, items: [] };
+      currentY += sectionTitleHeight;
+      pageHasContent = true;
+
+      for (const item of validItems) {
+        const rowHeight = pointRowHeight(item.name, item.value);
+
+        // Opsi "halaman baru" pada sub-poin, atau poin turun karena tidak muat
+        if (item.pageBreakBefore && currentSectionChunk.items.length > 0) {
+          startNewPage();
+          currentSectionChunk = { sectionTitle: `${sec.title} (Lanjutan)`, items: [] };
+          currentY += sectionTitleHeight;
+          pageHasContent = true;
+        } else if (currentY + rowHeight > PDF_LAYOUT.maxContentY) {
+          startNewPage();
+          currentSectionChunk = { sectionTitle: `${sec.title} (Lanjutan)`, items: [] };
+          currentY += sectionTitleHeight;
+          pageHasContent = true;
+        }
+
+        currentSectionChunk.items.push(item);
+        currentY += rowHeight;
+      }
+
+      // PDF menambah 6 pt setelah tiap kategori. Untuk kategori terakhir, PDF baru
+      // memindah halaman bila total kesimpulan tidak muat (checkPageBreak di bawah).
+      closeChunk();
+      currentY += 6;
+    }
+
+    // Penanda "Dilanjutkan di halaman berikutnya" hanya dipakai bila kesimpulan
+    // tidak muat di sisa halaman terakhir. Sisa < 26 pt memicu penanda ini.
+    const conclusionFitsHere = !pageHasContent || currentY + PDF_CONCLUSION_RESERVE <= PDF_LAYOUT.maxContentY;
+    const needsContinueMarker = !conclusionFitsHere && currentY + 26 >= PDF_LAYOUT.maxContentY;
+
+    if (conclusionFitsHere) {
+      pushCurrentPage(true);
     } else {
-      pages.push({
-        pageNumber: currentPageNumber,
-        isFirstPage: currentPageNumber === 1,
-        sections: currentSectionsInPage,
-        hasConclusionAndSign: false,
-      });
+      pushCurrentPage(false);
       currentPageNumber++;
       pages.push({
         pageNumber: currentPageNumber,
         isFirstPage: false,
         sections: [],
+        overflowPending: false,
+        promptContinue: false,
         hasConclusionAndSign: true,
       });
     }
 
-    return pages;
-  }, [sections]);
+    // Penanda hanya untuk halaman terakhir yang berisi pemeriksaan (kesimpulan pindah halaman).
+    const lastContentPage = pages.filter((p) => p.sections.length > 0).slice(-1)[0];
+    return pages.map((page) => ({
+      ...page,
+      promptContinue: needsContinueMarker && page === lastContentPage,
+    }));
+  }, [sections, formData]);
   const totalPages = paginatedPages.length;
 
   return (
@@ -681,14 +940,14 @@ export default function McuPage() {
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            r.conclusionType === 'Sehat'
+                            normalizeConclusionType(r.conclusionType) === 'Fit'
                               ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : r.conclusionType === 'Sehat dengan catatan'
+                              : normalizeConclusionType(r.conclusionType) === 'Fit dengan catatan'
                               ? 'bg-amber-100 text-amber-800 border border-amber-200'
                               : 'bg-rose-100 text-rose-800 border border-rose-200'
                           }`}
                         >
-                          {r.conclusionType}
+                          {normalizeConclusionType(r.conclusionType)}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{r.doctorName}</td>
@@ -933,7 +1192,57 @@ export default function McuPage() {
                         <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                           <div className="text-xs text-slate-600">
                             <strong>{totalItemsCount}</strong> poin pemeriksaan aktif dalam{' '}
-                            <strong>{sections.length}</strong> kategori.
+                            <strong>{sections.length}</strong> kategori. Tombol{' '}
+                            <span className="inline-flex items-center gap-1 align-middle px-1 rounded bg-white border border-slate-300 text-[10px] font-bold text-slate-600">
+                              <SeparatorHorizontal className="w-3 h-3" /> / Hal. baru
+                            </span>{' '}
+                            memaksa poin atau kategori dimulai di halaman PDF berikutnya.
+                          </div>
+                          {/* Navigasi cepat urutan kategori */}
+                          <div className="flex flex-wrap items-center gap-1 basis-full">
+                            <span className="text-[11px] font-semibold text-slate-500 mr-0.5">Urutan:</span>
+                            {(Object.keys(REORDERABLE_LABELS) as McuSectionCode[]).map((code) => {
+                              const idx = sections.findIndex((s) => s.code === code);
+                              const exists = idx >= 0;
+                              return (
+                                <div
+                                  key={code}
+                                  className={`inline-flex items-center gap-0.5 pl-2 pr-0.5 py-0.5 rounded-lg border text-[11px] ${
+                                    exists
+                                      ? 'bg-white border-slate-300 text-slate-800'
+                                      : 'bg-slate-100 border-dashed border-slate-300 text-slate-400'
+                                  }`}
+                                >
+                                  <span className="font-semibold">
+                                    {exists ? String.fromCharCode(65 + idx) : '-'} {REORDERABLE_LABELS[code]}
+                                  </span>
+                                  {exists && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveSection(idx, -1)}
+                                        disabled={idx <= 0}
+                                        className="px-1 py-0.5 rounded text-slate-600 hover:bg-teal-50 hover:text-teal-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                        title="Geser kategori ke atas"
+                                        aria-label={`Geser ${REORDERABLE_LABELS[code]} ke atas`}
+                                      >
+                                        <ArrowUp className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveSection(idx, 1)}
+                                        disabled={idx === sections.length - 1}
+                                        className="px-1 py-0.5 rounded text-slate-600 hover:bg-teal-50 hover:text-teal-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                        title="Geser kategori ke bawah"
+                                        aria-label={`Geser ${REORDERABLE_LABELS[code]} ke bawah`}
+                                      >
+                                        <ArrowDown className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
@@ -990,37 +1299,94 @@ export default function McuPage() {
                         )}
 
                         {/* List Kategori dan Poin Pemeriksaan */}
-                        {sections.map((sec) => (
+                        {sections.map((sec, secIndex) => (
                           <div
                             key={sec.id}
+                            ref={(el) => {
+                              sectionRefs.current[sec.id] = el;
+                            }}
                             className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
                           >
                             {/* Section Header */}
-                            <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
-                              <div className="flex items-center gap-2 flex-1">
+                            <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <input
                                   type="text"
                                   value={sec.title}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setSections((prev) =>
-                                      prev.map((s) => (s.id === sec.id ? { ...s, title: val } : s))
-                                    );
-                                  }}
+                                  onChange={(e) => handleRenameSection(sec.id, e.target.value)}
+                                  title="Klik untuk mengganti nama kategori"
+                                  aria-label="Nama kategori pemeriksaan"
                                   className="font-bold text-slate-900 text-xs bg-transparent border-b border-dashed border-slate-400 hover:border-slate-700 focus:outline-none focus:border-teal-700 px-1 py-0.5 w-full max-w-sm"
                                 />
-                                <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 bg-slate-200 rounded-full">
+                                <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 bg-slate-200 rounded-full whitespace-nowrap">
                                   {sec.items.length} Poin
                                 </span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSection(sec.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
-                                title="Hapus seluruh kategori ini jika tidak dilakukan"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSectionPageBreak(sec.id)}
+                                  aria-pressed={!!sec.pageBreakBefore}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                                    sec.pageBreakBefore
+                                      ? 'bg-teal-700 border-teal-700 text-white'
+                                      : 'bg-white border-slate-300 text-slate-600 hover:border-teal-400 hover:text-teal-800'
+                                  }`}
+                                  title="Cetak kategori ini mulai di halaman baru"
+                                >
+                                  Hal. baru
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSectionToEdge(secIndex, 'top')}
+                                  disabled={secIndex === 0}
+                                  className="p-1 rounded text-slate-500 hover:text-teal-800 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                  title="Pindahkan kategori ke paling atas"
+                                  aria-label={`Pindahkan ${sec.title} ke paling atas`}
+                                >
+                                  <ChevronsUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSection(secIndex, -1)}
+                                  disabled={secIndex === 0}
+                                  className="p-1 rounded text-slate-500 hover:text-teal-800 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                  title="Geser kategori ke atas"
+                                  aria-label={`Geser ${sec.title} ke atas`}
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSection(secIndex, 1)}
+                                  disabled={secIndex === sections.length - 1}
+                                  className="p-1 rounded text-slate-500 hover:text-teal-800 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                  title="Geser kategori ke bawah"
+                                  aria-label={`Geser ${sec.title} ke bawah`}
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSectionToEdge(secIndex, 'bottom')}
+                                  disabled={secIndex === sections.length - 1}
+                                  className="p-1 rounded text-slate-500 hover:text-teal-800 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                  title="Pindahkan kategori ke paling bawah"
+                                  aria-label={`Pindahkan ${sec.title} ke paling bawah`}
+                                >
+                                  <ChevronsDown className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSection(sec.id)}
+                                  className="p-1 rounded text-slate-400 hover:text-rose-600 cursor-pointer"
+                                  title="Hapus seluruh kategori ini jika tidak dilakukan"
+                                  aria-label={`Hapus kategori ${sec.title}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
 
                             {/* Section Items */}
@@ -1030,11 +1396,37 @@ export default function McuPage() {
                                   Kategori ini belum memiliki poin pemeriksaan. Klik &quot;+ Tambah Pemeriksaan&quot; di bawah.
                                 </p>
                               ) : (
-                                sec.items.map((item) => (
+                                sec.items.map((item, itemIndex) => (
                                   <div
                                     key={item.id}
-                                    className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-slate-50 border border-slate-100"
+                                    className={`flex items-start gap-2 p-1.5 rounded-lg border ${
+                                      item.pageBreakBefore
+                                        ? 'border-teal-300 bg-teal-50/40'
+                                        : 'border-slate-100 hover:bg-slate-50'
+                                    }`}
                                   >
+                                    <div className="flex flex-col shrink-0 mt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => moveItem(sec.id, itemIndex, -1)}
+                                        disabled={itemIndex === 0}
+                                        className="p-0.5 rounded text-slate-400 hover:text-teal-800 hover:bg-teal-50 disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                                        title="Geser poin ke atas"
+                                        aria-label={`Geser ${item.name || 'poin pemeriksaan'} ke atas`}
+                                      >
+                                        <ArrowUp className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveItem(sec.id, itemIndex, 1)}
+                                        disabled={itemIndex === sec.items.length - 1}
+                                        className="p-0.5 rounded text-slate-400 hover:text-teal-800 hover:bg-teal-50 disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                                        title="Geser poin ke bawah"
+                                        aria-label={`Geser ${item.name || 'poin pemeriksaan'} ke bawah`}
+                                      >
+                                        <ArrowDown className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                     <div className="w-40 shrink-0">
                                       <input
                                         type="text"
@@ -1065,9 +1457,28 @@ export default function McuPage() {
                                     </div>
                                     <button
                                       type="button"
+                                      onClick={() => toggleItemPageBreak(sec.id, item.id)}
+                                      aria-pressed={!!item.pageBreakBefore}
+                                      className={`shrink-0 mt-0.5 p-1 rounded transition-colors cursor-pointer ${
+                                        item.pageBreakBefore
+                                          ? 'bg-teal-700 text-white'
+                                          : 'text-slate-400 hover:text-teal-800 hover:bg-teal-50'
+                                      }`}
+                                      title={
+                                        item.pageBreakBefore
+                                          ? 'Poin ini mulai di halaman baru — klik untuk kembali normal'
+                                          : 'Cetak poin ini mulai di halaman baru'
+                                      }
+                                      aria-label={`${item.pageBreakBefore ? 'Batalkan' : 'Aktifkan'} halaman baru untuk poin ${item.name || 'pemeriksaan'}`}
+                                    >
+                                      <SeparatorHorizontal className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
                                       onClick={() => handleRemoveItem(sec.id, item.id)}
-                                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 mt-0.5"
+                                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 mt-0.5 cursor-pointer"
                                       title="Hapus poin pemeriksaan ini jika tidak dilakukan"
+                                      aria-label={`Hapus poin ${item.name || 'pemeriksaan'}`}
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
@@ -1125,100 +1536,79 @@ export default function McuPage() {
                         </h3>
 
                         <div className="space-y-2.5">
-                          <label className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="kesimpulan"
-                              checked={formData.conclusionType === 'Sehat'}
-                              onChange={() => setFormData({ ...formData, conclusionType: 'Sehat' })}
-                              className="text-teal-600 focus:ring-teal-500"
-                            />
-                            <span className="font-bold text-slate-900">Sehat</span>
-                          </label>
-
-                          <div
-                            className={`p-2.5 rounded-lg border ${
-                              formData.conclusionType === 'Sehat dengan catatan'
+                          {CONCLUSION_OPTIONS.map((option) => {
+                            const selected = formData.conclusionType === option;
+                            const showNotes = option !== 'Fit';
+                            const notesValue =
+                              option === 'Fit dengan catatan'
+                                ? formData.conclusionNotes
+                                : option === 'Temporary unfit'
+                                ? formData.temporaryUnfitNotes
+                                : formData.unfitNotes;
+                            const setNotes = (val: string) => {
+                              if (option === 'Fit dengan catatan') {
+                                setFormData({ ...formData, conclusionNotes: val });
+                              } else if (option === 'Temporary unfit') {
+                                setFormData({ ...formData, temporaryUnfitNotes: val });
+                              } else {
+                                setFormData({ ...formData, unfitNotes: val });
+                              }
+                            };
+                            const notesPlaceholder =
+                              option === 'Fit dengan catatan'
+                                ? 'Contoh: perbaiki pola makan dan olahraga teratur, gangguan pendengaran'
+                                : option === 'Temporary unfit'
+                                ? 'Alasan temporary unfit dan perkiraan lama pemulihan...'
+                                : 'Alasan tidak layak bekerja (unfit)...';
+                            const accentBorder =
+                              option === 'Fit'
+                                ? 'border-emerald-400 bg-emerald-50/50'
+                                : option === 'Fit dengan catatan'
                                 ? 'border-amber-400 bg-amber-50/50'
-                                : 'border-slate-200'
-                            }`}
-                          >
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="kesimpulan"
-                                checked={formData.conclusionType === 'Sehat dengan catatan'}
-                                onChange={() => setFormData({ ...formData, conclusionType: 'Sehat dengan catatan' })}
-                                className="text-amber-600 focus:ring-amber-500"
-                              />
-                              <span className="font-bold text-slate-900">Sehat dengan catatan :</span>
-                            </label>
-                            {formData.conclusionType === 'Sehat dengan catatan' && (
-                              <input
-                                type="text"
-                                value={formData.conclusionNotes}
-                                onChange={(e) => setFormData({ ...formData, conclusionNotes: e.target.value })}
-                                placeholder="Contoh: perbaiki pola makan dan olahraga teratur, gangguan pendengaran"
-                                className="w-full mt-2 px-3 py-1.5 rounded border border-amber-300 text-slate-900 bg-white"
-                              />
-                            )}
-                          </div>
-
-                          <div
-                            className={`p-2.5 rounded-lg border ${
-                              formData.conclusionType === 'Temporary Unfit'
+                                : option === 'Temporary unfit'
                                 ? 'border-orange-400 bg-orange-50/50'
-                                : 'border-slate-200'
-                            }`}
-                          >
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="kesimpulan"
-                                checked={formData.conclusionType === 'Temporary Unfit'}
-                                onChange={() => setFormData({ ...formData, conclusionType: 'Temporary Unfit' })}
-                                className="text-orange-600 focus:ring-orange-500"
-                              />
-                              <span className="font-bold text-slate-900">Temporary unfit :</span>
-                            </label>
-                            {formData.conclusionType === 'Temporary Unfit' && (
-                              <input
-                                type="text"
-                                value={formData.temporaryUnfitNotes}
-                                onChange={(e) => setFormData({ ...formData, temporaryUnfitNotes: e.target.value })}
-                                placeholder="Alasan temporary unfit..."
-                                className="w-full mt-2 px-3 py-1.5 rounded border border-orange-300 text-slate-900 bg-white"
-                              />
-                            )}
-                          </div>
+                                : 'border-rose-400 bg-rose-50/50';
+                            const accentText =
+                              option === 'Fit'
+                                ? 'text-emerald-600 focus:ring-emerald-500'
+                                : option === 'Fit dengan catatan'
+                                ? 'text-amber-600 focus:ring-amber-500'
+                                : option === 'Temporary unfit'
+                                ? 'text-orange-600 focus:ring-orange-500'
+                                : 'text-rose-600 focus:ring-rose-500';
 
-                          <div
-                            className={`p-2.5 rounded-lg border ${
-                              formData.conclusionType === 'Unfit'
-                                ? 'border-rose-400 bg-rose-50/50'
-                                : 'border-slate-200'
-                            }`}
-                          >
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="kesimpulan"
-                                checked={formData.conclusionType === 'Unfit'}
-                                onChange={() => setFormData({ ...formData, conclusionType: 'Unfit' })}
-                                className="text-rose-600 focus:ring-rose-500"
-                              />
-                              <span className="font-bold text-slate-900">Unfit :</span>
-                            </label>
-                            {formData.conclusionType === 'Unfit' && (
-                              <input
-                                type="text"
-                                value={formData.unfitNotes}
-                                onChange={(e) => setFormData({ ...formData, unfitNotes: e.target.value })}
-                                placeholder="Alasan tidak layak bekerja (unfit)..."
-                                className="w-full mt-2 px-3 py-1.5 rounded border border-rose-300 text-slate-900 bg-white"
-                              />
-                            )}
-                          </div>
+                            return (
+                              <div
+                                key={option}
+                                className={`p-2.5 rounded-lg border ${
+                                  selected && showNotes ? accentBorder : 'border-slate-200'
+                                }`}
+                              >
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name="kesimpulan"
+                                    checked={selected}
+                                    onChange={() => setFormData({ ...formData, conclusionType: option })}
+                                    className={accentText}
+                                  />
+                                  <span className="font-bold text-slate-900">
+                                    {option}
+                                    {showNotes ? ' :' : ''}
+                                  </span>
+                                </label>
+                                {showNotes && selected && (
+                                  <input
+                                    type="text"
+                                    value={notesValue}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                    placeholder={notesPlaceholder}
+                                    className="w-full mt-2 px-3 py-1.5 rounded border border-slate-300 text-slate-900 bg-white"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
 
                         <div className="space-y-3 pt-2">
@@ -1304,7 +1694,7 @@ export default function McuPage() {
                   </div>
 
                   {/* DOCUMENT PAGES CONTAINER */}
-                  <div className="space-y-6 max-w-[595px] mx-auto w-full">
+                              <div className="space-y-6 mx-auto w-full flex flex-col items-center">
                     {paginatedPages.map((page) => {
                       if (activePreviewPage !== 'all' && activePreviewPage !== page.pageNumber) {
                         return null;
@@ -1313,94 +1703,116 @@ export default function McuPage() {
                       return (
                         <div
                           key={page.pageNumber}
-                          className="bg-white shadow-2xl rounded-xs px-10 py-6 sm:px-12 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative flex flex-col justify-between mx-auto shrink-0 overflow-hidden"
+                          className="bg-white shadow-2xl border border-slate-300 relative mx-auto shrink-0 overflow-hidden"
                           style={{
                             fontFamily: 'Arial, Helvetica, sans-serif',
-                            width: '595px',
-                            minHeight: '842px',
-                            height: '842px',
+                            fontSize: '11px',
+                            lineHeight: '12.65px',
+                            color: '#000000',
+                            width: `${PDF_LAYOUT.pageWidth}px`,
+                            height: `${PDF_LAYOUT.pageHeight}px`,
                           }}
                         >
-                          {/* Konten Utama Halaman A4 */}
-                          <div className="space-y-2.5 flex-1 flex flex-col justify-start overflow-hidden">
-                          {/* Header Image on EVERY page */}
+                          {/* Kop Surat: lebar tepat 425 pt seperti di PDF */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src="/header-hasil.jpeg"
-                            alt="Header RS"
-                            className="w-full h-auto object-contain rounded"
+                            alt="Kop Klinik"
+                            className="absolute"
+                            style={{
+                              left: `${PDF_LAYOUT.leftMargin}px`,
+                              top: `${PDF_LAYOUT.headerTop}px`,
+                              width: `${PDF_LAYOUT.printableWidth}px`,
+                              height: `${PDF_LAYOUT.headerHeight}px`,
+                              objectFit: 'fill',
+                            }}
                           />
 
-                          {/* Judul & Identitas hanya di Halaman 1 */}
-                          {page.isFirstPage && (
-                            <>
-                              <div className="text-center font-bold text-[11px] uppercase tracking-wide text-blue-900 leading-tight pt-1">
-                                <div>RESUME HASIL PEMERIKSAAN</div>
-                                <div>MEDICAL CHECK UP ({formData.purpose || 'MCU KERJA'})</div>
-                              </div>
+                          {/* Area konten: ukuran dalam px = pt PDF (1pt = 1px) agar seragam */}
+                          <div
+                            className="absolute"
+                            style={{
+                              left: `${PDF_LAYOUT.leftMargin}px`,
+                              top: `${PDF_LAYOUT.contentTop}px`,
+                              width: `${PDF_LAYOUT.printableWidth}px`,
+                            }}
+                          >
+                            {/* Judul & Identitas hanya di halaman pertama */}
+                            {page.isFirstPage && (
+                              <>
+                                <div
+                                  className="text-center font-bold"
+                                  style={{ fontSize: '12px', lineHeight: '13.8px', color: '#1e3a8a' }}
+                                >
+                                  <div>RESUME HASIL PEMERIKSAAN</div>
+                                  <div>MEDICAL CHECK UP ({(formData.purpose || 'MCU KERJA').toUpperCase()})</div>
+                                </div>
 
-                              <div>
-                                <p className="font-bold text-[9px] uppercase text-slate-900 mb-1">
-                                  IDENTITAS PASIEN
-                                </p>
-                                <table className="w-full border-collapse border border-slate-800 text-[9.5px]">
-                                  <tbody className="divide-y divide-slate-300">
-                                    <tr>
-                                      <td className="p-1.5 w-36 font-bold text-slate-800 border-r border-slate-300">
-                                        Nama
-                                      </td>
-                                      <td className="p-1.5 font-bold text-slate-900">
-                                        : {formData.patientName || '[Nama Pasien]'}
-                                      </td>
-                                    </tr>
-                                    <tr>
-                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
-                                        Umur / Jenis Kelamin
-                                      </td>
-                                      <td className="p-1.5">: {formData.ageGender}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
-                                        Tanggal Lahir
-                                      </td>
-                                      <td className="p-1.5">: {formData.birthDate || '-'}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
-                                        Alamat
-                                      </td>
-                                      <td className="p-1.5">: {formData.address || '-'}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
-                                        Tanggal Pemeriksaan
-                                      </td>
-                                      <td className="p-1.5">: {formData.examDate}</td>
-                                    </tr>
-                                    <tr>
-                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
-                                        Keperluan
-                                      </td>
-                                      <td className="p-1.5">: {formData.purpose}</td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                            </>
-                          )}
+                                <div style={{ marginTop: '6px' }}>
+                                  <div className="font-bold" style={{ fontSize: '11px', lineHeight: '12.65px' }}>
+                                    IDENTITAS PASIEN
+                                  </div>
+                                  <div style={{ marginTop: '4px', border: '0.5px solid #000' }}>
+                                    {[
+                                      ['Nama', formData.patientName || '[Nama Pasien]', true],
+                                      ['Umur / Jenis Kelamin', formData.ageGender, false],
+                                      ['Tanggal Lahir', formData.birthDate || '-', false],
+                                      ['Alamat', formData.address || '-', false],
+                                      ['Tanggal Pemeriksaan', formData.examDate, false],
+                                      ['Keperluan', formData.purpose || 'MCU kerja', false],
+                                    ].map(([label, value, bold], rowIdx) => (
+                                      <div
+                                        key={rowIdx}
+                                        style={{
+                                          display: 'flex',
+                                          minHeight: '16px',
+                                          borderTop: rowIdx === 0 ? 'none' : '0.5px solid #000',
+                                        }}
+                                      >
+                                        <div
+                                          className="font-bold"
+                                          style={{ width: '145px', flex: '0 0 145px', padding: '1.5px 6px', lineHeight: '12.65px' }}
+                                        >
+                                          {label}
+                                        </div>
+                                        <div
+                                          className={bold ? 'font-bold' : ''}
+                                          style={{
+                                            width: `${PDF_LAYOUT.idValueWidth + 10}px`,
+                                            padding: '1.5px 6px',
+                                            lineHeight: '12.65px',
+                                            wordBreak: 'break-word',
+                                          }}
+                                        >
+                                          {value as string}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </>
+                            )}
 
-                          {/* Examination Sections on this page */}
-                          <div className="space-y-3 pt-1 text-[9.5px]">
+                            {/* Poin pemeriksaan halaman ini */}
                             {page.sections.map((secChunk, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <p className="font-bold text-blue-900">{secChunk.sectionTitle}</p>
-                                <div className="space-y-0.5 pl-3">
+                              <div key={idx} style={{ marginTop: '6px' }}>
+                                <div className="font-bold" style={{ fontSize: '11.5px', lineHeight: '13.225px', color: '#1e3a8a' }}>
+                                  {secChunk.sectionTitle}
+                                </div>
+                                <div style={{ marginTop: '3px' }}>
                                   {secChunk.items.map((it) => (
-                                    <div key={it.id} className="flex">
-                                      <span className="w-44 font-medium text-slate-700 shrink-0">
+                                    <div key={it.id} style={{ display: 'flex', paddingLeft: `${PDF_LAYOUT.pointIndent}px` }}>
+                                      <span
+                                        style={{
+                                          width: `${PDF_LAYOUT.pointLabelWidth}px`,
+                                          flex: `0 0 ${PDF_LAYOUT.pointLabelWidth}px`,
+                                          color: '#334155',
+                                          wordBreak: 'break-word',
+                                        }}
+                                      >
                                         {it.name}
                                       </span>
-                                      <span className="text-slate-900 whitespace-pre-line">
+                                      <span style={{ flex: 1, color: '#000', whiteSpace: 'pre-line', wordBreak: 'break-word' }}>
                                         : {it.value || '-'}
                                       </span>
                                     </div>
@@ -1408,122 +1820,106 @@ export default function McuPage() {
                                 </div>
                               </div>
                             ))}
+
+                            {/* Penanda halaman berikutnya (mengikuti layout PDF) */}
+                            {page.promptContinue && (
+                              <div
+                                className="text-right italic"
+                                style={{ marginTop: '10px', fontSize: '10px', lineHeight: '11.5px', color: '#475569' }}
+                              >
+                                (Dilanjutkan di halaman berikutnya)
+                              </div>
+                            )}
+
+                            {/* Kesimpulan, Saran & TTD bila muat di halaman ini */}
+                            {page.hasConclusionAndSign && (
+                              <div style={{ marginTop: '6px' }}>
+                                <div className="font-bold" style={{ fontSize: '11.5px', lineHeight: '13.225px', color: '#1e3a8a' }}>
+                                  KESIMPULAN
+                                </div>
+                                <div style={{ marginTop: '2px' }}>
+                                  {CONCLUSION_OPTIONS.map((option) => {
+                                    const selected = formData.conclusionType === option;
+                                    const notesText =
+                                      option === 'Fit dengan catatan'
+                                        ? formData.conclusionNotes
+                                        : option === 'Temporary unfit'
+                                        ? formData.temporaryUnfitNotes
+                                        : option === 'Unfit'
+                                        ? formData.unfitNotes
+                                        : '';
+                                    return (
+                                      <div key={option} style={{ display: 'flex', minHeight: '16px' }}>
+                                        <span
+                                          className="font-bold"
+                                          style={{
+                                            marginLeft: '6px',
+                                            marginTop: '2px',
+                                            width: '9px',
+                                            height: '9px',
+                                            flex: '0 0 9px',
+                                            border: '1px solid #000',
+                                            background: selected ? '#000' : 'transparent',
+                                            color: '#fff',
+                                            fontSize: '8px',
+                                            lineHeight: '9px',
+                                            textAlign: 'center',
+                                          }}
+                                        >
+                                          {selected ? '✓' : ''}
+                                        </span>
+                                        <span
+                                          className={selected ? 'font-bold' : ''}
+                                          style={{ marginLeft: '7px', wordBreak: 'break-word' }}
+                                        >
+                                          {option}
+                                          {option !== 'Fit' ? ` : ${notesText || '_____________'}` : ''}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                <div style={{ marginTop: '8px' }}>
+                                  <div className="font-bold" style={{ fontSize: '11.5px', lineHeight: '13.225px', color: '#1e3a8a' }}>
+                                    SARAN - SARAN
+                                  </div>
+                                  <div style={{ marginTop: '3px' }}>
+                                    {(formData.recommendations
+                                      ? formData.recommendations.split('\n').filter((s) => s.trim() !== '')
+                                      : ['Pertahankan pola hidup sehat dan olahraga teratur.']
+                                    ).map((s, sIdx) => (
+                                      <div key={sIdx} style={{ paddingLeft: '8px', color: '#000', wordBreak: 'break-word' }}>
+                                        • {s}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                                  <div style={{ width: '180px', textAlign: 'center', lineHeight: '12.65px' }}>
+                                    <div style={{ marginTop: '6px' }}>Dokter Pemeriksa,</div>
+                                    <div style={{ height: '50px' }} />
+                                    <div className="font-bold underline">{formData.doctorName}</div>
+                                    <div style={{ fontSize: '10px' }}>{formData.doctorSip}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Kesimpulan, Saran & TTD jika berada di halaman ini */}
-                          {page.hasConclusionAndSign && (
-                            <div className="space-y-3 pt-2 text-[9.5px]">
-                              {/* KESIMPULAN */}
-                              <div>
-                                <p className="font-bold text-blue-900 mb-1">Kesimpulan</p>
-                                <div className="space-y-1 pl-3">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] ${
-                                        formData.conclusionType === 'Sehat'
-                                          ? 'bg-blue-900 text-white border-blue-900'
-                                          : 'border-slate-400'
-                                      }`}
-                                    >
-                                      {formData.conclusionType === 'Sehat' ? '✓' : ''}
-                                    </span>
-                                    <span>Sehat</span>
-                                  </div>
-
-                                  <div className="flex items-start gap-2">
-                                    <span
-                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
-                                        formData.conclusionType === 'Sehat dengan catatan'
-                                          ? 'bg-blue-900 text-white border-blue-900'
-                                          : 'border-slate-400'
-                                      }`}
-                                    >
-                                      {formData.conclusionType === 'Sehat dengan catatan' ? '✓' : ''}
-                                    </span>
-                                    <span>
-                                      Sehat dengan catatan :{' '}
-                                      <strong className="text-slate-800 font-semibold">
-                                        {formData.conclusionNotes || '_____________'}
-                                      </strong>
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-start gap-2">
-                                    <span
-                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
-                                        formData.conclusionType === 'Temporary Unfit'
-                                          ? 'bg-blue-900 text-white border-blue-900'
-                                          : 'border-slate-400'
-                                      }`}
-                                    >
-                                      {formData.conclusionType === 'Temporary Unfit' ? '✓' : ''}
-                                    </span>
-                                    <span>
-                                      Temporary unfit :{' '}
-                                      <strong className="text-slate-800 font-semibold">
-                                        {formData.temporaryUnfitNotes || '_____________'}
-                                      </strong>
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-start gap-2">
-                                    <span
-                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
-                                        formData.conclusionType === 'Unfit'
-                                          ? 'bg-blue-900 text-white border-blue-900'
-                                          : 'border-slate-400'
-                                      }`}
-                                    >
-                                      {formData.conclusionType === 'Unfit' ? '✓' : ''}
-                                    </span>
-                                    <span>
-                                      Unfit :{' '}
-                                      <strong className="text-slate-800 font-semibold">
-                                        {formData.unfitNotes || '_____________'}
-                                      </strong>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* SARAN - SARAN */}
-                              <div>
-                                <p className="font-bold text-blue-900 mb-1">SARAN - SARAN</p>
-                                <div className="space-y-0.5 pl-3">
-                                  {formData.recommendations ? (
-                                    formData.recommendations
-                                      .split('\n')
-                                      .filter((s) => s.trim() !== '')
-                                      .map((s, sIdx) => (
-                                        <p key={sIdx} className="text-slate-800">
-                                          • {s}
-                                        </p>
-                                      ))
-                                  ) : (
-                                    <p className="text-slate-400 italic">• Tidak ada saran khusus.</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* TANDA TANGAN DOKTER */}
-                              <div className="pt-2 flex justify-end text-[9.5px]">
-                                <div className="w-52 text-center space-y-1">
-                                  <p className="text-slate-700">Dokter Pemeriksa,</p>
-                                  <div className="h-12 flex items-center justify-center text-slate-300 italic text-[9px]">
-                                    (Tanda Tangan)
-                                  </div>
-                                  <p className="font-bold text-slate-900 underline">{formData.doctorName}</p>
-                                  <p className="text-slate-500 text-[8.5px] font-mono">{formData.doctorSip}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          </div>
-
-                          {/* Footer Nomor Halaman di Bagian Bawah Kertas A4 */}
+                          {/* Footer nomor halaman: Cambria 11 pt, center */}
                           <div
-                            className="pt-2 border-t border-slate-300 text-center text-[10.5pt] text-slate-700 font-medium shrink-0 mt-auto"
-                            style={{ fontFamily: 'Cambria, Georgia, serif' }}
+                            className="absolute text-center"
+                            style={{
+                              left: `${PDF_LAYOUT.leftMargin}px`,
+                              top: '792px',
+                              width: `${PDF_LAYOUT.printableWidth}px`,
+                              fontFamily: 'Cambria, Georgia, serif',
+                              fontSize: '11px',
+                              lineHeight: '12.65px',
+                              color: '#000',
+                            }}
                           >
                             Page {page.pageNumber} of {totalPages}
                           </div>
