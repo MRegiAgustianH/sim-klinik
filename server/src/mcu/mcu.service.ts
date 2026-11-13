@@ -628,7 +628,7 @@ export class McuService {
       doc.y = Math.max(doc.y, boxY + 16);
     };
 
-    drawCheckbox('Fit', isFit, '');
+    drawCheckbox('Fit to work', isFit, '');
     drawCheckbox(
       'Fit dengan catatan',
       isFitWithNotes,

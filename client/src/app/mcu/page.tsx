@@ -52,6 +52,15 @@ type ConclusionType = 'Fit' | 'Fit dengan catatan' | 'Temporary unfit' | 'Unfit'
 
 const CONCLUSION_OPTIONS: ConclusionType[] = ['Fit', 'Fit dengan catatan', 'Temporary unfit', 'Unfit'];
 
+// Label yang dicetak/ditampilkan. Nilai tersimpan tetap 'Fit' agar data lama
+// dan constraint database yang sudah ada tidak perlu diubah.
+const CONCLUSION_LABELS: Record<ConclusionType, string> = {
+  Fit: 'Fit to work',
+  'Fit dengan catatan': 'Fit dengan catatan',
+  'Temporary unfit': 'Temporary unfit',
+  Unfit: 'Unfit',
+};
+
 interface McuReportItem {
   id: number;
   reportNumber: string | null;
@@ -947,7 +956,7 @@ export default function McuPage() {
                               : 'bg-rose-100 text-rose-800 border border-rose-200'
                           }`}
                         >
-                          {normalizeConclusionType(r.conclusionType)}
+                          {CONCLUSION_LABELS[normalizeConclusionType(r.conclusionType)]}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{r.doctorName}</td>
@@ -1593,7 +1602,7 @@ export default function McuPage() {
                                     className={accentText}
                                   />
                                   <span className="font-bold text-slate-900">
-                                    {option}
+                                    {CONCLUSION_LABELS[option]}
                                     {showNotes ? ' :' : ''}
                                   </span>
                                 </label>
@@ -1872,7 +1881,7 @@ export default function McuPage() {
                                           className={selected ? 'font-bold' : ''}
                                           style={{ marginLeft: '7px', wordBreak: 'break-word' }}
                                         >
-                                          {option}
+                                          {CONCLUSION_LABELS[option]}
                                           {option !== 'Fit' ? ` : ${notesText || '_____________'}` : ''}
                                         </span>
                                       </div>
