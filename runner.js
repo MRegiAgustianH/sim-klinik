@@ -173,12 +173,17 @@ async function main() {
   const serverDir = path.join(__dirname, 'server');
   const clientDir = path.join(__dirname, 'client');
 
-  // Penanda mode untuk DatabaseService (dev -> vaksinku-dev.sqlite).
-  // `next dev` juga membaca file ini, jadi isinya hanya NEXT_DIST_DIR yang netral.
+  // Penanda mode untuk DatabaseService: ada = development (vaksinku-dev.sqlite),
+  // tidak ada = production (vaksinku.sqlite). Hanya dibaca backend, bukan Next.js.
   if (MODE.envMarker) {
     if (!fs.existsSync(MODE.envMarker)) {
       fs.writeFileSync(MODE.envMarker, '# Dibuat otomatis oleh runner.js untuk mode development\n');
     }
+  } else if (fs.existsSync(MODES.dev.envMarker)) {
+    // Mode production: penanda development harus dihapus, jika tidak backend akan
+    // memakai vaksinku-dev.sqlite dan melewati pembersihan data demo.
+    fs.unlinkSync(MODES.dev.envMarker);
+    console.log('      [OK] Penanda mode development dihapus; backend memakai database production.');
   }
 
   // Pastikan dependensi terpasang
