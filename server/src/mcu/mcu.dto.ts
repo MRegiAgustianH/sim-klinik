@@ -45,6 +45,9 @@ export class CreateMcuDto {
   @IsOptional()
   supportingExam?: string | Record<string, unknown>;
 
+  @IsOptional()
+  examinationSections?: string | Array<unknown>;
+
   @IsNotEmpty({ message: 'Kesimpulan kelayakan wajib dipilih' })
   @IsIn(['Sehat', 'Sehat dengan catatan', 'Temporary Unfit', 'Unfit'])
   conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';

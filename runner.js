@@ -3,6 +3,7 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const http = require('http');
+const fs = require('fs');
 
 const BACKEND_PORT = 4000;
 const FRONTEND_PORT = 8080;
@@ -93,10 +94,28 @@ async function main() {
   killPortProcess(FRONTEND_PORT);
   killPortProcess(BACKEND_PORT);
   console.log('      [OK] Port 8080 dan 4000 bersih dan siap digunakan.\n');
+  const serverDir = path.join(__dirname, 'server');
+  const clientDir = path.join(__dirname, 'client');
+
+  // Pastikan dependensi terpasang
+  if (!fs.existsSync(path.join(serverDir, 'node_modules'))) {
+    console.log('      [SETUP] Dependensi backend belum terpasang. Menjalankan npm install...');
+    execSync('npm install', { cwd: serverDir, stdio: 'inherit' });
+  }
+  if (!fs.existsSync(path.join(clientDir, 'node_modules'))) {
+    console.log('      [SETUP] Dependensi frontend belum terpasang. Menjalankan npm install...');
+    execSync('npm install', { cwd: clientDir, stdio: 'inherit' });
+  }
+
+  // Pastikan backend sudah ter-build
+  const serverDist = path.join(serverDir, 'dist', 'main.js');
+  if (!fs.existsSync(serverDist)) {
+    console.log('      [BUILD] Mengompilasi backend NestJS (npm run build)...');
+    execSync('npm run build', { cwd: serverDir, stdio: 'inherit' });
+  }
 
   // 2. Jalankan Backend NestJS
   console.log('[2/4] Menjalankan Backend Service (NestJS)...');
-  const serverDir = path.join(__dirname, 'server');
   const backend = spawn(process.execPath, ['dist/main.js'], {
     cwd: serverDir,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -111,7 +130,7 @@ async function main() {
   });
   backend.stderr.on('data', (d) => {
     const str = d.toString();
-    if (!str.includes('ExperimentalWarning')) {
+    if (!str.includes('ExperimentalWarning') && !str.includes('keyFilename')) {
       process.stderr.write(`      [Backend Log]: ${str}`);
     }
   });
@@ -135,7 +154,14 @@ async function main() {
   if (isDev) {
     console.log('      [FITUR AKTIF] Fast Refresh / Auto-Reload saat edit file .tsx aktif!');
   }
-  const clientDir = path.join(__dirname, 'client');
+  const clientBuildId = path.join(clientDir, '.next', 'BUILD_ID');
+  if (nextMode === 'start' && !fs.existsSync(clientBuildId)) {
+    console.log('      [BUILD] Build produksi Next.js belum ada / ditimpa mode dev.');
+    console.log('      [BUILD] Menjalankan kompilasi frontend (npm run build)...');
+    execSync('npm run build', { cwd: clientDir, stdio: 'inherit' });
+    console.log('      [OK] Kompilasi frontend selesai.\n');
+  }
+
   const nextBin = path.join(clientDir, 'node_modules', 'next', 'dist', 'bin', 'next');
 
   const frontend = spawn(process.execPath, [nextBin, nextMode, '-H', '0.0.0.0', '-p', String(FRONTEND_PORT)], {

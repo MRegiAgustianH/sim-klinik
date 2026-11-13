@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import AppShell from '@/components/AppShell';
 import { apiFetch, getApiBaseUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -13,12 +13,28 @@ import {
   FileDown,
   Edit,
   Trash2,
-  Sparkles,
   X,
   Printer,
   ChevronLeft,
   ChevronRight,
+  RotateCcw,
+  PlusCircle,
+  FileText,
+  UserCheck,
+  ClipboardList,
 } from 'lucide-react';
+
+interface McuExamItem {
+  id: string;
+  name: string;
+  value: string;
+}
+
+interface McuExamSection {
+  id: string;
+  title: string;
+  items: McuExamItem[];
+}
 
 interface McuReportItem {
   id: number;
@@ -35,85 +51,113 @@ interface McuReportItem {
   physicalExam: string | null;
   labExam: string | null;
   supportingExam: string | null;
+  examinationSections: string | null;
   conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';
   conclusionNotes: string | null;
   recommendations: string | null;
   doctorName: string;
   doctorSip: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
-const DEFAULT_NORMAL_STATE = {
-  patientName: '',
-  nik: '',
-  ageGender: '49 Tahun / Laki-Laki',
-  birthDate: '20 Juni 1977',
-  address: 'Cianjur, Jawa Barat',
-  examDate: new Date().toISOString().split('T')[0],
-  purpose: 'MCU kerja',
+const DEFAULT_EXAM_SECTIONS: McuExamSection[] = [
+  {
+    id: 'sec_vital',
+    title: 'A. TANDA VITAL',
+    items: [
+      { id: 'vital_bp', name: 'Tekanan Darah', value: '120/80 mmHg' },
+      { id: 'vital_pulse', name: 'Nadi', value: '80 x/menit' },
+      { id: 'vital_resp', name: 'Pernafasan', value: '18 x/menit' },
+      { id: 'vital_temp', name: 'Suhu', value: '36.5 °C' },
+      { id: 'vital_cons', name: 'Kesadaran', value: 'Compos Mentis' },
+    ],
+  },
+  {
+    id: 'sec_antropo',
+    title: 'B. ANTROPOMETRI',
+    items: [
+      { id: 'antropo_weight', name: 'Berat Badan (BB)', value: '60 kg' },
+      { id: 'antropo_height', name: 'Tinggi Badan (TB)', value: '165 cm' },
+      { id: 'antropo_bmi', name: 'IMT / BMI', value: '22.0' },
+      { id: 'antropo_nutrition', name: 'Status Gizi', value: 'Normal' },
+    ],
+  },
+  {
+    id: 'sec_physical',
+    title: 'C. PEMERIKSAAN FISIK',
+    items: [
+      { id: 'phy_gen', name: 'Keadaan Umum', value: 'Baik' },
+      { id: 'phy_head', name: 'Kepala', value: 'Normal' },
+      { id: 'phy_eyes', name: 'Mata & Visus', value: 'Visus OD 20/20, OS 20/20' },
+      { id: 'phy_color', name: 'Buta Warna', value: 'Tidak Buta Warna' },
+      { id: 'phy_teeth', name: 'Gigi & Mulut', value: 'Normal' },
+      { id: 'phy_ent', name: 'Telinga, Hidung, Tenggorokan', value: 'Normal' },
+      { id: 'phy_neck', name: 'Leher', value: 'Normal' },
+      { id: 'phy_heart', name: 'Jantung', value: 'Bunyi jantung reguler, tidak ada murmur' },
+      { id: 'phy_lungs', name: 'Paru paru', value: 'Suara nafas vesikuler, tidak ada ronkhi/wheezing' },
+      { id: 'phy_abdomen', name: 'Abdomen', value: 'Lunak, tidak ada nyeri tekan' },
+      { id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: 'Tidak ada edema, kekuatan otot baik' },
+    ],
+  },
+  {
+    id: 'sec_lab',
+    title: 'D. PEMERIKSAAN LABORATORIUM',
+    items: [
+      { id: 'lab_blood', name: 'Darah Lengkap', value: 'Dalam batas normal' },
+      { id: 'lab_urine', name: 'Urine Lengkap', value: 'Dalam batas normal' },
+      { id: 'lab_chem', name: 'Kimia Darah', value: 'Dalam batas normal' },
+      { id: 'lab_lipid', name: 'Profil Lipid & Fungsi Hati', value: 'Dalam batas normal' },
+      { id: 'lab_hbsag', name: 'HBsAg', value: 'Negatif' },
+      { id: 'lab_drug', name: 'Tes NAFZA', value: 'Negatif' },
+    ],
+  },
+  {
+    id: 'sec_sup',
+    title: 'E. PEMERIKSAAN PENUNJANG',
+    items: [
+      { id: 'sup_xray', name: 'Rontgen Thorax', value: 'Cor dan Pulmo dalam batas normal, tidak tampak kelainan aktif.' },
+      { id: 'sup_ekg', name: 'EKG', value: 'Normal Sinus Rhythm' },
+      { id: 'sup_treadmill', name: 'Threadmill', value: 'Normal' },
+      { id: 'sup_audio', name: 'Audiometri', value: 'Dalam batas normal' },
+      { id: 'sup_spiro', name: 'Spirometri', value: 'Normal' },
+    ],
+  },
+];
 
-  // A. TANDA VITAL
-  bloodPressure: '127/90 mmHg (Pre-hipertensi)',
-  pulse: '95 x/menit (Normal)',
-  respiration: '26 x/menit (Normal)',
-  temperature: '36.2 °C (Normal)',
-  consciousness: 'Compos Mentis',
+const SUGGESTED_EXAMS = [
+  'USG Abdomen',
+  'USG Kandungan / Kebidanan',
+  'Pemeriksaan Mata / Refraksi',
+  'Pemeriksaan Gigi Detail',
+  'Audiometri',
+  'Spirometri',
+  'Threadmill Test',
+  'Rontgen Thorax PA',
+  'Kolesterol Total',
+  'Trigliserida',
+  'HDL Kolesterol',
+  'LDL Kolesterol',
+  'Asam Urat',
+  'Ureum & Kreatinin',
+  'SGOT & SGPT',
+  'Glukosa Puasa (GDP)',
+  'Glukosa 2 Jam PP',
+  'HbA1c',
+  'Tes Kehamilan (PP Test)',
+  'Golongan Darah & Rhesus',
+  'Tes Buta Warna Ishihara',
+];
 
-  // B. ANTROPOMETRI
-  weight: '67',
-  height: '160',
-  bmi: '26.2',
-  nutritionStatus: 'Obesitas',
-
-  // C. PEMERIKSAAN FISIK
-  head: 'Normal',
-  teeth: 'Radics 1, stain+',
-  ent: 'Normal',
-  neck: 'Normal',
-  heart: 'Normal',
-  lungs: 'Normal',
-  abdomen: 'Normal',
-  extremities: 'Normal',
-
-  // D. PEMERIKSAAN LABORATORIUM
-  completeBlood: 'Dalam batas normal',
-  completeUrine: 'Dalam batas normal',
-  bloodChemistry: 'Dalam batas normal', // GDP, Kolesterol total, LDL, Kreatinin, Ureum, Asam Urat
-  lipidLiver: 'Hasil tidak batas normal', // TG, HDL, SGOT, SGPT
-  hbsag: 'Negatif',
-  drugTest: 'Negatif',
-
-  // E - I. PEMERIKSAAN PENUNJANG
-  thoraxXray: '• Trakea di tengah, Mediastinum tidak melebar, Cor tidak membesar (<CTR <50%), Sinuses dan diafragma normal\n• Pulmo : Hili normal, Corakan bronkovaskuler normal, Tidak tampak infiltrat/konsolidasi. Soft tissue dan skeletal normal.\nKesan : Tidak tampak TBC paru aktif/pneumonia, Tidak tampak kardiomegali',
-  ekg: 'Hasil terlampir',
-  treadmill: 'Normal',
-  audiometry: 'Rata-rata ambang dengar kedua telinga dalam batas normal, terdapat penurunan pendengaran pada frekuensi 8000Hz sebesar 35dB pada telinga kanan dan frekuensi 8000Hz sebesar 60dB pada telinga kiri',
-  spirometry: 'Restrictive',
-
-  // FISIK DETAIL (HALAMAN 3 & 4)
-  generalCondition: 'Baik',
-  eyesVisus: 'Visus OD 20/20, OS 20/20',
-  colorVision: 'Tidak Buta warna',
-  earSecret: 'Tidak ada sekret',
-  noseSecret: 'Tidak ada sekret',
-  neckGland: 'Tidak ada pembesaran kelenjar',
-  lungsBreathSound: 'suara nafas vesikuler, tidak ada ronkhi/wheezing',
-  heartSound: 'Bunyi jantung reguler, tidak ada murmur',
-  abdomenPalpation: 'lunak, tidak ada nyeri tekan',
-  liverSpleen: 'tidak teraba',
-  extremitiesDetail: 'tidak ada edema, kekuatan otot baik',
-
-  // KESIMPULAN & SARAN
-  conclusionType: 'Sehat dengan catatan' as 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit',
-  conclusionNotes: 'perbaiki pola makan dan olahraga teratur, gangguan pendengaran',
-  temporaryUnfitNotes: '',
-  unfitNotes: '',
-  recommendations: 'Konsul Dokter Spesialis THT\nKonsul Gizi\nBerhenti merokok',
-
-  // DOKTER
-  doctorName: 'dr. Arinda Puteri P',
-  doctorSip: 'SIP.MR32032507002898',
-};
+interface PaginatedPage {
+  pageNumber: number;
+  isFirstPage: boolean;
+  sections: {
+    sectionTitle: string;
+    items: McuExamItem[];
+  }[];
+  hasConclusionAndSign: boolean;
+}
 
 export default function McuPage() {
   const { user, hasRole } = useAuth();
@@ -124,21 +168,38 @@ export default function McuPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modals
+  // Modals & Active state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [reportToDelete, setReportToDelete] = useState<McuReportItem | null>(null);
 
-  // Active form section in editor & active preview page (1..4)
-  const [activeFormTab, setActiveFormTab] = useState<'resume' | 'lab' | 'physical' | 'conclusion'>('resume');
+  // Active form tab: 'patient' | 'exams' | 'conclusion'
+  const [activeFormTab, setActiveFormTab] = useState<'patient' | 'exams' | 'conclusion'>('patient');
   const [activePreviewPage, setActivePreviewPage] = useState<number | 'all'>('all');
 
-  // Form State
+  // Patient Info & Conclusion State
   const [formData, setFormData] = useState({
-    ...DEFAULT_NORMAL_STATE,
-    doctorName: user?.fullName?.startsWith('dr') ? user.fullName : 'dr. Arinda Puteri P',
+    patientName: '',
+    nik: '',
+    ageGender: '35 Tahun / Laki-Laki',
+    birthDate: '',
+    address: 'Cianjur, Jawa Barat',
+    examDate: new Date().toISOString().split('T')[0],
+    purpose: 'MCU Kerja',
+    conclusionType: 'Sehat' as 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit',
+    conclusionNotes: '',
+    temporaryUnfitNotes: '',
+    unfitNotes: '',
+    recommendations: 'Pertahankan pola hidup sehat dan olahraga teratur.\nMinum air putih minimal 2 liter per hari.',
+    doctorName: 'dr. Arinda Puteri P',
+    doctorSip: 'SIP.MR32032507002898',
   });
+
+  // Flexible examination sections
+  const [sections, setSections] = useState<McuExamSection[]>(DEFAULT_EXAM_SECTIONS);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
 
   const fetchReports = useCallback(async () => {
     try {
@@ -151,7 +212,7 @@ export default function McuPage() {
       setReports(res.data);
       setTotalCount(res.total);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memuat daftar MCU.';
+      const msg = err instanceof Error ? err.message : 'Gagal memuat daftar laporan MCU.';
       toastError(msg);
     } finally {
       setIsLoading(false);
@@ -162,34 +223,28 @@ export default function McuPage() {
     fetchReports();
   }, [fetchReports]);
 
-  // Auto-calculate BMI & Nutrition Status when Weight/Height changes
-  useEffect(() => {
-    const w = parseFloat(formData.weight);
-    const h = parseFloat(formData.height);
-    if (!isNaN(w) && !isNaN(h) && h > 0) {
-      const hM = h / 100;
-      const bmiVal = (w / (hM * hM)).toFixed(1);
-      let status = 'Normal';
-      const bmiNum = parseFloat(bmiVal);
-      if (bmiNum < 18.5) status = 'Underweight';
-      else if (bmiNum < 25) status = 'Normal';
-      else if (bmiNum < 30) status = 'Overweight';
-      else status = 'Obesitas';
-
-      setFormData((prev) => ({ ...prev, bmi: bmiVal, nutritionStatus: status }));
-    }
-  }, [formData.weight, formData.height]);
-
   // Open New Form
   const handleOpenNew = () => {
     setIsEditing(false);
     setSelectedReportId(null);
     setFormData({
-      ...DEFAULT_NORMAL_STATE,
+      patientName: '',
+      nik: '',
+      ageGender: '35 Tahun / Laki-Laki',
+      birthDate: '',
+      address: 'Cianjur, Jawa Barat',
       examDate: new Date().toISOString().split('T')[0],
+      purpose: 'MCU Kerja',
+      conclusionType: 'Sehat',
+      conclusionNotes: '',
+      temporaryUnfitNotes: '',
+      unfitNotes: '',
+      recommendations: 'Pertahankan pola hidup sehat dan olahraga teratur.\nMinum air putih minimal 2 liter per hari.',
       doctorName: user?.fullName?.startsWith('dr') ? user.fullName : 'dr. Arinda Puteri P',
+      doctorSip: 'SIP.MR32032507002898',
     });
-    setActiveFormTab('resume');
+    setSections(JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    setActiveFormTab('patient');
     setActivePreviewPage('all');
     setIsEditorOpen(true);
   };
@@ -199,155 +254,170 @@ export default function McuPage() {
     setIsEditing(true);
     setSelectedReportId(r.id);
 
-    const parseJson = (s: string | null) => {
-      try {
-        return s ? JSON.parse(s) : {};
-      } catch {
-        return {};
-      }
-    };
-
-    const vital = parseJson(r.vitalSigns);
-    const antropo = parseJson(r.anthropometry);
-    const physical = parseJson(r.physicalExam);
-    const lab = parseJson(r.labExam);
-    const supporting = parseJson(r.supportingExam);
-
-    let recs = '';
+    let recsText = '';
     if (r.recommendations) {
       try {
         const parsed = JSON.parse(r.recommendations);
-        recs = Array.isArray(parsed) ? parsed.join('\n') : String(parsed);
+        recsText = Array.isArray(parsed) ? parsed.join('\n') : String(parsed);
       } catch {
-        recs = r.recommendations;
+        recsText = r.recommendations;
       }
     }
 
     setFormData({
-      ...DEFAULT_NORMAL_STATE,
       patientName: r.patientName,
       nik: r.nik || '',
       ageGender: r.ageGender,
       birthDate: r.birthDate || '',
       address: r.address || '',
       examDate: r.examDate,
-      purpose: r.purpose || 'MCU kerja',
-
-      bloodPressure: vital.bloodPressure || '120/80 mmHg',
-      pulse: vital.pulse || '80 x/menit',
-      respiration: vital.respiration || '18 x/menit',
-      temperature: vital.temperature || '36.5 °C',
-      consciousness: vital.consciousness || 'Compos Mentis',
-
-      weight: antropo.weight ? antropo.weight.replace(/\D/g, '') : '65',
-      height: antropo.height ? antropo.height.replace(/\D/g, '') : '160',
-      bmi: antropo.bmi || '26.2',
-      nutritionStatus: antropo.nutritionStatus || 'Normal',
-
-      head: physical.head || 'Normal',
-      teeth: physical.teeth || 'Normal',
-      ent: physical.ent || 'Normal',
-      neck: physical.neck || 'Normal',
-      heart: physical.heart || 'Normal',
-      lungs: physical.lungs || 'Normal',
-      abdomen: physical.abdomen || 'Normal',
-      extremities: physical.extremities || 'Normal',
-
-      completeBlood: lab.completeBlood || 'Dalam batas normal',
-      completeUrine: lab.completeUrine || 'Dalam batas normal',
-      bloodChemistry: lab.bloodChemistry || 'Dalam batas normal',
-      lipidLiver: lab.additionalLab || 'Dalam batas normal',
-      hbsag: lab.hbsag || 'Negatif',
-      drugTest: lab.drugTest || 'Negatif',
-
-      thoraxXray: supporting.thoraxXray || 'Cor dan Pulmo dalam batas normal',
-      ekg: supporting.ekg || 'Normal',
-      treadmill: supporting.treadmill || 'Normal',
-      audiometry: supporting.audiometry || 'Dalam batas normal',
-      spirometry: supporting.spirometry || 'Normal',
-
-      generalCondition: physical.generalCondition || 'Baik',
-      eyesVisus: physical.eyes || 'Visus OD 20/20, OS 20/20',
-      colorVision: physical.colorVision || 'Tidak Buta warna',
-      earSecret: physical.earSecret || 'Tidak ada sekret',
-      noseSecret: physical.noseSecret || 'Tidak ada sekret',
-      neckGland: physical.neckGland || 'Tidak ada pembesaran kelenjar',
-      lungsBreathSound: physical.lungsBreathSound || 'suara nafas vesikuler, tidak ada ronkhi/wheezing',
-      heartSound: physical.heartSound || 'Bunyi jantung reguler, tidak ada murmur',
-      abdomenPalpation: physical.abdomenPalpation || 'lunak, tidak ada nyeri tekan',
-      liverSpleen: physical.liverSpleen || 'tidak teraba',
-      extremitiesDetail: physical.extremitiesDetail || 'tidak ada edema, kekuatan otot baik',
-
+      purpose: r.purpose || 'MCU Kerja',
       conclusionType: r.conclusionType,
       conclusionNotes: r.conclusionNotes || '',
       temporaryUnfitNotes: r.conclusionType === 'Temporary Unfit' ? r.conclusionNotes || '' : '',
       unfitNotes: r.conclusionType === 'Unfit' ? r.conclusionNotes || '' : '',
-      recommendations: recs,
-
+      recommendations: recsText,
       doctorName: r.doctorName,
       doctorSip: r.doctorSip || 'SIP.MR32032507002898',
     });
 
-    setActiveFormTab('resume');
+    // Parse sections
+    let parsedSections: McuExamSection[] = [];
+    if (r.examinationSections) {
+      try {
+        const parsed = JSON.parse(r.examinationSections);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsedSections = parsed;
+        }
+      } catch {
+        parsedSections = [];
+      }
+    }
+
+    // Fallback if examinationSections was null (convert from legacy)
+    if (parsedSections.length === 0) {
+      const parseJson = (s: string | null): Record<string, string> => {
+        try {
+          return s ? JSON.parse(s) : {};
+        } catch {
+          return {};
+        }
+      };
+
+      const vital = parseJson(r.vitalSigns);
+      const antropo = parseJson(r.anthropometry);
+      const physical = parseJson(r.physicalExam);
+      const lab = parseJson(r.labExam);
+      const supporting = parseJson(r.supportingExam);
+
+      const secVital: McuExamItem[] = [];
+      if (vital.bloodPressure) secVital.push({ id: 'vital_bp', name: 'Tekanan Darah', value: vital.bloodPressure });
+      if (vital.pulse) secVital.push({ id: 'vital_pulse', name: 'Nadi', value: vital.pulse });
+      if (vital.respiration) secVital.push({ id: 'vital_resp', name: 'Pernafasan', value: vital.respiration });
+      if (vital.temperature) secVital.push({ id: 'vital_temp', name: 'Suhu', value: vital.temperature });
+      if (vital.consciousness) secVital.push({ id: 'vital_cons', name: 'Kesadaran', value: vital.consciousness });
+      if (secVital.length > 0) parsedSections.push({ id: 'sec_vital', title: 'A. TANDA VITAL', items: secVital });
+
+      const secAntropo: McuExamItem[] = [];
+      if (antropo.weight) secAntropo.push({ id: 'antropo_weight', name: 'Berat Badan (BB)', value: antropo.weight });
+      if (antropo.height) secAntropo.push({ id: 'antropo_height', name: 'Tinggi Badan (TB)', value: antropo.height });
+      if (antropo.bmi) secAntropo.push({ id: 'antropo_bmi', name: 'IMT / BMI', value: antropo.bmi });
+      if (antropo.nutritionStatus) secAntropo.push({ id: 'antropo_nutrition', name: 'Status Gizi', value: antropo.nutritionStatus });
+      if (secAntropo.length > 0) parsedSections.push({ id: 'sec_antropo', title: 'B. ANTROPOMETRI', items: secAntropo });
+
+      const secPhysical: McuExamItem[] = [];
+      if (physical.generalCondition) secPhysical.push({ id: 'phy_gen', name: 'Keadaan Umum', value: physical.generalCondition });
+      if (physical.head) secPhysical.push({ id: 'phy_head', name: 'Kepala', value: physical.head });
+      if (physical.eyes) secPhysical.push({ id: 'phy_eyes', name: 'Mata & Visus', value: physical.eyes });
+      if (physical.colorVision) secPhysical.push({ id: 'phy_color', name: 'Buta Warna', value: physical.colorVision });
+      if (physical.teeth) secPhysical.push({ id: 'phy_teeth', name: 'Gigi & Mulut', value: physical.teeth });
+      if (physical.ent) secPhysical.push({ id: 'phy_ent', name: 'Telinga, Hidung, Tenggorokan', value: physical.ent });
+      if (physical.neck) secPhysical.push({ id: 'phy_neck', name: 'Leher', value: physical.neck });
+      if (physical.heart) secPhysical.push({ id: 'phy_heart', name: 'Jantung', value: physical.heart });
+      if (physical.lungs) secPhysical.push({ id: 'phy_lungs', name: 'Paru paru', value: physical.lungs });
+      if (physical.abdomen) secPhysical.push({ id: 'phy_abdomen', name: 'Abdomen', value: physical.abdomen });
+      if (physical.extremities) secPhysical.push({ id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: physical.extremities });
+      if (secPhysical.length > 0) parsedSections.push({ id: 'sec_physical', title: 'C. PEMERIKSAAN FISIK', items: secPhysical });
+
+      const secLab: McuExamItem[] = [];
+      if (lab.completeBlood) secLab.push({ id: 'lab_blood', name: 'Darah Lengkap', value: lab.completeBlood });
+      if (lab.completeUrine) secLab.push({ id: 'lab_urine', name: 'Urine Lengkap', value: lab.completeUrine });
+      if (lab.bloodChemistry) secLab.push({ id: 'lab_chem', name: 'Kimia Darah', value: lab.bloodChemistry });
+      if (lab.additionalLab) secLab.push({ id: 'lab_add', name: 'Profil Lipid & Fungsi Hati', value: lab.additionalLab });
+      if (lab.hbsag) secLab.push({ id: 'lab_hbsag', name: 'HBsAg', value: lab.hbsag });
+      if (lab.drugTest) secLab.push({ id: 'lab_drug', name: 'Tes NAFZA', value: lab.drugTest });
+      if (secLab.length > 0) parsedSections.push({ id: 'sec_lab', title: 'D. PEMERIKSAAN LABORATORIUM', items: secLab });
+
+      const secSup: McuExamItem[] = [];
+      if (supporting.thoraxXray) secSup.push({ id: 'sup_xray', name: 'Rontgen Thorax', value: supporting.thoraxXray });
+      if (supporting.ekg) secSup.push({ id: 'sup_ekg', name: 'EKG', value: supporting.ekg });
+      if (supporting.treadmill) secSup.push({ id: 'sup_treadmill', name: 'Threadmill', value: supporting.treadmill });
+      if (supporting.audiometry) secSup.push({ id: 'sup_audio', name: 'Audiometri', value: supporting.audiometry });
+      if (supporting.spirometry) secSup.push({ id: 'sup_spiro', name: 'Spirometri', value: supporting.spirometry });
+      if (secSup.length > 0) parsedSections.push({ id: 'sec_sup', title: 'E. PEMERIKSAAN PENUNJANG', items: secSup });
+    }
+
+    setSections(parsedSections.length > 0 ? parsedSections : JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    setActiveFormTab('patient');
     setActivePreviewPage('all');
     setIsEditorOpen(true);
   };
 
-  // 1-Click "Pakai Template Normal"
-  const handleApplyNormalTemplate = () => {
-    setFormData((prev) => ({
-      ...prev,
-      bloodPressure: '120/80 mmHg (Normal)',
-      pulse: '80 x/menit (Normal)',
-      respiration: '18 x/menit (Normal)',
-      temperature: '36.5 °C (Normal)',
-      consciousness: 'Compos Mentis',
+  // Section item handlers
+  const handleAddItem = (sectionId: string, itemName = '', itemValue = '') => {
+    setSections((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        const newItem: McuExamItem = {
+          id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: itemName,
+          value: itemValue,
+        };
+        return { ...sec, items: [...sec.items, newItem] };
+      })
+    );
+  };
 
-      weight: '65',
-      height: '165',
-      bmi: '23.9',
-      nutritionStatus: 'Normal',
+  const handleRemoveItem = (sectionId: string, itemId: string) => {
+    setSections((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        return { ...sec, items: sec.items.filter((it) => it.id !== itemId) };
+      })
+    );
+  };
 
-      head: 'Normal',
-      teeth: 'Normal',
-      ent: 'Normal',
-      neck: 'Normal',
-      heart: 'Normal',
-      lungs: 'Normal',
-      abdomen: 'Normal',
-      extremities: 'Normal',
+  const handleUpdateItem = (sectionId: string, itemId: string, field: 'name' | 'value', value: string) => {
+    setSections((prev) =>
+      prev.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        return {
+          ...sec,
+          items: sec.items.map((it) => (it.id === itemId ? { ...it, [field]: value } : it)),
+        };
+      })
+    );
+  };
 
-      completeBlood: 'Dalam batas normal',
-      completeUrine: 'Dalam batas normal',
-      bloodChemistry: 'Dalam batas normal',
-      lipidLiver: 'Dalam batas normal',
-      hbsag: 'Negatif',
-      drugTest: 'Negatif',
+  const handleAddSection = () => {
+    if (!newCategoryName.trim()) return;
+    const newSec: McuExamSection = {
+      id: `sec_${Date.now()}`,
+      title: newCategoryName.trim(),
+      items: [{ id: `item_${Date.now()}`, name: '', value: '' }],
+    };
+    setSections((prev) => [...prev, newSec]);
+    setNewCategoryName('');
+    setIsAddingCategory(false);
+  };
 
-      thoraxXray: 'Cor dan Pulmo dalam batas normal, tidak tampak kelainan aktif.',
-      ekg: 'Normal Sinus Rhythm',
-      treadmill: 'Normal / Tidak dilakukan',
-      audiometry: 'Dalam batas normal',
-      spirometry: 'Normal / Tidak dilakukan',
+  const handleRemoveSection = (sectionId: string) => {
+    setSections((prev) => prev.filter((sec) => sec.id !== sectionId));
+  };
 
-      generalCondition: 'Baik',
-      eyesVisus: 'Visus OD 20/20, OS 20/20',
-      colorVision: 'Tidak Buta warna',
-      earSecret: 'Tidak ada sekret',
-      noseSecret: 'Tidak ada sekret',
-      neckGland: 'Tidak ada pembesaran kelenjar',
-      lungsBreathSound: 'suara nafas vesikuler, tidak ada ronkhi/wheezing',
-      heartSound: 'Bunyi jantung reguler, tidak ada murmur',
-      abdomenPalpation: 'lunak, tidak ada nyeri tekan',
-      liverSpleen: 'tidak teraba',
-      extremitiesDetail: 'tidak ada edema, kekuatan otot baik',
-
-      conclusionType: 'Sehat',
-      conclusionNotes: '',
-      temporaryUnfitNotes: '',
-      unfitNotes: '',
-      recommendations: 'Pertahankan pola hidup sehat dan olahraga teratur.\nMinum air putih minimal 2 liter per hari.',
-    }));
+  const handleResetToStandard = () => {
+    setSections(JSON.parse(JSON.stringify(DEFAULT_EXAM_SECTIONS)));
+    success('Template pemeriksaan standar berhasil dimuat.');
   };
 
   // Save MCU Report
@@ -373,56 +443,7 @@ export default function McuPage() {
         address: formData.address.trim() || undefined,
         examDate: formData.examDate,
         purpose: formData.purpose,
-
-        vitalSigns: {
-          bloodPressure: formData.bloodPressure,
-          pulse: formData.pulse,
-          respiration: formData.respiration,
-          temperature: formData.temperature,
-          consciousness: formData.consciousness,
-        },
-        anthropometry: {
-          weight: `${formData.weight} kg`,
-          height: `${formData.height} cm`,
-          bmi: formData.bmi,
-          nutritionStatus: formData.nutritionStatus,
-        },
-        physicalExam: {
-          generalCondition: formData.generalCondition,
-          head: formData.head,
-          teeth: formData.teeth,
-          ent: formData.ent,
-          neck: formData.neck,
-          heart: formData.heart,
-          lungs: formData.lungs,
-          abdomen: formData.abdomen,
-          extremities: formData.extremities,
-          eyes: formData.eyesVisus,
-          colorVision: formData.colorVision,
-          earSecret: formData.earSecret,
-          noseSecret: formData.noseSecret,
-          neckGland: formData.neckGland,
-          lungsBreathSound: formData.lungsBreathSound,
-          heartSound: formData.heartSound,
-          abdomenPalpation: formData.abdomenPalpation,
-          liverSpleen: formData.liverSpleen,
-          extremitiesDetail: formData.extremitiesDetail,
-        },
-        labExam: {
-          completeBlood: formData.completeBlood,
-          completeUrine: formData.completeUrine,
-          bloodChemistry: formData.bloodChemistry,
-          additionalLab: formData.lipidLiver,
-          hbsag: formData.hbsag,
-          drugTest: formData.drugTest,
-        },
-        supportingExam: {
-          thoraxXray: formData.thoraxXray,
-          ekg: formData.ekg,
-          treadmill: formData.treadmill,
-          audiometry: formData.audiometry,
-          spirometry: formData.spirometry,
-        },
+        examinationSections: sections,
         conclusionType: formData.conclusionType,
         conclusionNotes: finalConclusionNotes,
         recommendations: formData.recommendations.split('\n').filter((s) => s.trim() !== ''),
@@ -453,6 +474,7 @@ export default function McuPage() {
     }
   };
 
+  // Download PDF
   const handleDownloadPdf = async (id: number) => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('vaksinku_token') : '';
@@ -470,6 +492,7 @@ export default function McuPage() {
     }
   };
 
+  // Confirm delete report
   const confirmDeleteReport = async () => {
     if (!reportToDelete) return;
     try {
@@ -483,6 +506,96 @@ export default function McuPage() {
     }
   };
 
+  // Total examination points across all sections
+  const totalItemsCount = useMemo(() => {
+    return sections.reduce((acc, s) => acc + s.items.length, 0);
+  }, [sections]);
+
+  // Real-time dynamic pagination algorithm for live preview
+  const paginatedPages = useMemo<PaginatedPage[]>(() => {
+    let currentPageNumber = 1;
+    // Budget Halaman 1: ruang aman setelah Header, Judul & Tabel Identitas (~290px)
+    let currentRemainingHeight = 290;
+    let currentSectionsInPage: { sectionTitle: string; items: McuExamItem[] }[] = [];
+    const pages: PaginatedPage[] = [];
+
+    sections.forEach((sec) => {
+      const validItems = sec.items.filter((it) => it.name.trim() !== '' || it.value.trim() !== '');
+      if (validItems.length === 0) return;
+
+      let currentSectionChunk: { sectionTitle: string; items: McuExamItem[] } = {
+        sectionTitle: sec.title,
+        items: [],
+      };
+      let sectionTitleAdded = false;
+
+      validItems.forEach((item) => {
+        // Perhitungan tinggi baris item riil
+        const valueLength = item.value?.length || 0;
+        const lineCount = Math.max(1, Math.ceil(valueLength / 45));
+        const itemHeight = lineCount * 18 + 2; // ~20px per baris teks tunggal
+        const neededHeight = (!sectionTitleAdded ? 28 : 0) + itemHeight;
+
+        if (currentRemainingHeight < neededHeight) {
+          if (currentSectionChunk.items.length > 0) {
+            currentSectionsInPage.push(currentSectionChunk);
+          }
+          pages.push({
+            pageNumber: currentPageNumber,
+            isFirstPage: currentPageNumber === 1,
+            sections: currentSectionsInPage,
+            hasConclusionAndSign: false,
+          });
+          currentPageNumber++;
+          // Budget Halaman 2+: ruang aman di bawah Header gambar (~530px)
+          currentRemainingHeight = 530;
+          currentSectionsInPage = [];
+          currentSectionChunk = { sectionTitle: `${sec.title} (Lanjutan)`, items: [] };
+          sectionTitleAdded = false;
+        }
+
+        if (!sectionTitleAdded) {
+          currentRemainingHeight -= 28;
+          sectionTitleAdded = true;
+        }
+        currentSectionChunk.items.push(item);
+        currentRemainingHeight -= itemHeight;
+      });
+
+      if (currentSectionChunk.items.length > 0) {
+        currentSectionsInPage.push(currentSectionChunk);
+      }
+      currentRemainingHeight -= 10;
+    });
+
+    // Pengecekan ruang untuk Kesimpulan + Saran + TTD (memerlukan ~235px)
+    if (currentRemainingHeight >= 235) {
+      pages.push({
+        pageNumber: currentPageNumber,
+        isFirstPage: currentPageNumber === 1,
+        sections: currentSectionsInPage,
+        hasConclusionAndSign: true,
+      });
+    } else {
+      pages.push({
+        pageNumber: currentPageNumber,
+        isFirstPage: currentPageNumber === 1,
+        sections: currentSectionsInPage,
+        hasConclusionAndSign: false,
+      });
+      currentPageNumber++;
+      pages.push({
+        pageNumber: currentPageNumber,
+        isFirstPage: false,
+        sections: [],
+        hasConclusionAndSign: true,
+      });
+    }
+
+    return pages;
+  }, [sections]);
+  const totalPages = paginatedPages.length;
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -494,7 +607,7 @@ export default function McuPage() {
               Laporan Hasil Medical Check Up (MCU)
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Template digital hasil pemeriksaan MCU dokter Klinik Utama Dr. H. A. Rotinsulu Cianjur
+              Kelola laporan hasil MCU dokter dengan poin pemeriksaan fleksibel dan layout adaptif
             </p>
           </div>
 
@@ -585,7 +698,7 @@ export default function McuPage() {
                             type="button"
                             onClick={() => handleDownloadPdf(r.id)}
                             className="p-1.5 rounded-lg text-teal-700 hover:text-teal-900 hover:bg-teal-50 cursor-pointer"
-                            title="Unduh PDF Resmi 4 Halaman"
+                            title="Unduh PDF Resmi"
                           >
                             <FileDown className="w-4 h-4" />
                           </button>
@@ -640,20 +753,13 @@ export default function McuPage() {
                     <h2 className="text-sm sm:text-base font-bold text-white">
                       {isEditing ? `Edit Laporan MCU: ${formData.patientName}` : 'Formulir Laporan Medical Check Up (MCU)'}
                     </h2>
+                    <p className="text-[11px] text-slate-300">
+                      Poin pemeriksaan fleksibel: hapus jika tidak dilakukan, tambah pemeriksaan lain sesuka kebutuhan.
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleApplyNormalTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition-colors cursor-pointer"
-                    title="Otomatis isi seluruh poin pemeriksaan dengan status normal"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                    <span>Pakai Template Normal</span>
-                  </button>
-
                   <button
                     type="button"
                     onClick={handleSaveReport}
@@ -683,7 +789,7 @@ export default function McuPage() {
                 </div>
               </div>
 
-              {/* Split Body: Input Form (Left) & Live 4-Page Preview (Right) */}
+              {/* Split Body: Input Form (Left) & Live Multi-Page Preview (Right) */}
               <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
                 {/* PANEL KIRI: FORMULIR INPUT DOKTER */}
                 <div className="w-full lg:w-1/2 flex flex-col bg-white border-r border-slate-200 overflow-hidden">
@@ -691,58 +797,50 @@ export default function McuPage() {
                   <div className="flex border-b border-slate-200 bg-slate-50 text-xs overflow-x-auto shrink-0">
                     <button
                       type="button"
-                      onClick={() => setActiveFormTab('resume')}
-                      className={`px-3.5 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
-                        activeFormTab === 'resume'
+                      onClick={() => setActiveFormTab('patient')}
+                      className={`px-4 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+                        activeFormTab === 'patient'
                           ? 'border-teal-700 text-teal-800 bg-white'
                           : 'border-transparent text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      1. Identitas, Vital & Fisik
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>1. Identitas Pasien</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setActiveFormTab('lab')}
-                      className={`px-3.5 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
-                        activeFormTab === 'lab'
+                      onClick={() => setActiveFormTab('exams')}
+                      className={`px-4 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+                        activeFormTab === 'exams'
                           ? 'border-teal-700 text-teal-800 bg-white'
                           : 'border-transparent text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      2. Lab & Penunjang
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveFormTab('physical')}
-                      className={`px-3.5 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
-                        activeFormTab === 'physical'
-                          ? 'border-teal-700 text-teal-800 bg-white'
-                          : 'border-transparent text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      3. Fisik Detail & Organ
+                      <ClipboardList className="w-3.5 h-3.5" />
+                      <span>2. Poin Pemeriksaan ({totalItemsCount})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveFormTab('conclusion')}
-                      className={`px-3.5 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
+                      className={`px-4 py-2.5 font-bold whitespace-nowrap border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
                         activeFormTab === 'conclusion'
                           ? 'border-teal-700 text-teal-800 bg-white'
                           : 'border-transparent text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      4. Kesimpulan & Saran
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span>3. Kesimpulan & Saran</span>
                     </button>
                   </div>
 
                   {/* Form Scroll Body */}
                   <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 text-xs">
-                    {/* TAB 1: IDENTITAS, VITAL & FISIK UMUM */}
-                    {activeFormTab === 'resume' && (
+                    {/* TAB 1: IDENTITAS PASIEN */}
+                    {activeFormTab === 'patient' && (
                       <div className="space-y-4">
                         <div className="space-y-3">
                           <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Identitas Pasien (Satu-satunya yang diberi tabel)
+                            Identitas Pasien
                           </h3>
                           <div>
                             <label className="block font-semibold text-slate-700 mb-1">Nama Pasien *</label>
@@ -774,7 +872,7 @@ export default function McuPage() {
                                 required
                                 value={formData.ageGender}
                                 onChange={(e) => setFormData({ ...formData, ageGender: e.target.value })}
-                                placeholder="Contoh: 49 Tahun / Laki-Laki"
+                                placeholder="Contoh: 35 Tahun / Laki-Laki"
                                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
                               />
                             </div>
@@ -787,7 +885,7 @@ export default function McuPage() {
                                 type="text"
                                 value={formData.birthDate}
                                 onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                                placeholder="Contoh: 20 Juni 1977"
+                                placeholder="Contoh: 20 Juni 1989"
                                 className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
                               />
                             </div>
@@ -804,518 +902,226 @@ export default function McuPage() {
                           </div>
 
                           <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Keperluan</label>
+                            <label className="block font-semibold text-slate-700 mb-1">Keperluan Pemeriksaan</label>
                             <input
                               type="text"
                               value={formData.purpose}
                               onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                              placeholder="Contoh: MCU kerja"
+                              placeholder="Contoh: MCU Kerja / Pra-Pekerjaan"
                               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold"
                             />
                           </div>
 
                           <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Alamat Lengkap</label>
+                            <label className="block font-semibold text-slate-700 mb-1">Alamat Pasien</label>
                             <textarea
                               rows={2}
                               value={formData.address}
                               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                              placeholder="Alamat domisili pasien..."
+                              placeholder="Alamat domisili lengkap..."
                               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
                             />
-                          </div>
-                        </div>
-
-                        {/* A. Tanda Vital */}
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            A. Tanda Vital
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Tekanan Darah</label>
-                              <input
-                                type="text"
-                                value={formData.bloodPressure}
-                                onChange={(e) => setFormData({ ...formData, bloodPressure: e.target.value })}
-                                placeholder="Pre-hipertensi (127/90 mmHg)"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Nadi</label>
-                              <input
-                                type="text"
-                                value={formData.pulse}
-                                onChange={(e) => setFormData({ ...formData, pulse: e.target.value })}
-                                placeholder="Normal (95 x/menit)"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Pernafasan</label>
-                              <input
-                                type="text"
-                                value={formData.respiration}
-                                onChange={(e) => setFormData({ ...formData, respiration: e.target.value })}
-                                placeholder="Normal (26 x/menit)"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Suhu</label>
-                              <input
-                                type="text"
-                                value={formData.temperature}
-                                onChange={(e) => setFormData({ ...formData, temperature: e.target.value })}
-                                placeholder="Normal (36.2 °C)"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="block font-semibold text-slate-700 mb-1">Kesadaran</label>
-                              <input
-                                type="text"
-                                value={formData.consciousness}
-                                onChange={(e) => setFormData({ ...formData, consciousness: e.target.value })}
-                                placeholder="Compos Mentis"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* B. Antropometri */}
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            B. Antropometri
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Berat Badan (BB - kg)</label>
-                              <input
-                                type="number"
-                                value={formData.weight}
-                                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                                placeholder="67"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-mono font-bold"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Tinggi Badan (TB - cm)</label>
-                              <input
-                                type="number"
-                                value={formData.height}
-                                onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-                                placeholder="160"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-mono font-bold"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">IMT / BMI (Auto)</label>
-                              <input
-                                type="text"
-                                readOnly
-                                value={formData.bmi}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono font-bold"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Status Gizi (Auto)</label>
-                              <input
-                                type="text"
-                                value={formData.nutritionStatus}
-                                onChange={(e) => setFormData({ ...formData, nutritionStatus: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-bold"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* C. Pemeriksaan Fisik */}
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            C. Pemeriksaan Fisik
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Kepala</label>
-                              <input
-                                type="text"
-                                value={formData.head}
-                                onChange={(e) => setFormData({ ...formData, head: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Gigi</label>
-                              <input
-                                type="text"
-                                value={formData.teeth}
-                                onChange={(e) => setFormData({ ...formData, teeth: e.target.value })}
-                                placeholder="Radics 1, stain+"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Telinga, Hidung, Tenggorokan</label>
-                              <input
-                                type="text"
-                                value={formData.ent}
-                                onChange={(e) => setFormData({ ...formData, ent: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Leher</label>
-                              <input
-                                type="text"
-                                value={formData.neck}
-                                onChange={(e) => setFormData({ ...formData, neck: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Jantung</label>
-                              <input
-                                type="text"
-                                value={formData.heart}
-                                onChange={(e) => setFormData({ ...formData, heart: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Paru paru</label>
-                              <input
-                                type="text"
-                                value={formData.lungs}
-                                onChange={(e) => setFormData({ ...formData, lungs: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Abdomen</label>
-                              <input
-                                type="text"
-                                value={formData.abdomen}
-                                onChange={(e) => setFormData({ ...formData, abdomen: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Ekstremelitas Atas dan Bawah</label>
-                              <input
-                                type="text"
-                                value={formData.extremities}
-                                onChange={(e) => setFormData({ ...formData, extremities: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* TAB 2: LAB & PENUNJANG (D, E, F, G, H, I) */}
-                    {activeFormTab === 'lab' && (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            D. Pemeriksaan Laboratorium
-                          </h3>
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Darah Lengkap</label>
-                            <input
-                              type="text"
-                              value={formData.completeBlood}
-                              onChange={(e) => setFormData({ ...formData, completeBlood: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                            />
+                    {/* TAB 2: POIN PEMERIKSAAN FLEKSIBEL */}
+                    {activeFormTab === 'exams' && (
+                      <div className="space-y-5">
+                        {/* Top Actions for Sections */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                          <div className="text-xs text-slate-600">
+                            <strong>{totalItemsCount}</strong> poin pemeriksaan aktif dalam{' '}
+                            <strong>{sections.length}</strong> kategori.
                           </div>
-
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Urine Lengkap</label>
-                            <input
-                              type="text"
-                              value={formData.completeUrine}
-                              onChange={(e) => setFormData({ ...formData, completeUrine: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">
-                              GDP, Kolestrol Total, LDL, Kreatinin, Ureum, Asam Urat
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={formData.bloodChemistry}
-                              onChange={(e) => setFormData({ ...formData, bloodChemistry: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">
-                              TG, HDL, SGOT, SGPT
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.lipidLiver}
-                              onChange={(e) => setFormData({ ...formData, lipidLiver: e.target.value })}
-                              placeholder="Dalam batas normal / Hasil tidak batas normal"
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">HBsAg</label>
-                              <input
-                                type="text"
-                                value={formData.hbsag}
-                                onChange={(e) => setFormData({ ...formData, hbsag: e.target.value })}
-                                placeholder="Negatif"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Tes NAFZA (6 Parameter)</label>
-                              <input
-                                type="text"
-                                value={formData.drugTest}
-                                onChange={(e) => setFormData({ ...formData, drugTest: e.target.value })}
-                                placeholder="Negatif"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleResetToStandard}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+                              title="Kembalikan ke template standar lengkap"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Reset Template Standar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingCategory(true)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Tambah Kategori Baru</span>
+                            </button>
                           </div>
                         </div>
 
-                        {/* E - I. Penunjang */}
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            E. Pemeriksaan Rontgen Thorax
-                          </h3>
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Gambaran Rontgen</label>
-                            <textarea
-                              rows={4}
-                              value={formData.thoraxXray}
-                              onChange={(e) => setFormData({ ...formData, thoraxXray: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                            />
-                          </div>
-
-                          <div className="space-y-2.5 pt-2">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">F. Pemeriksaan EKG</label>
+                        {/* Modal Tambah Kategori Baru */}
+                        {isAddingCategory && (
+                          <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl space-y-2">
+                            <label className="block font-semibold text-teal-900">Nama Kategori / Bagian Pemeriksaan Baru:</label>
+                            <div className="flex gap-2">
                               <input
                                 type="text"
-                                value={formData.ekg}
-                                onChange={(e) => setFormData({ ...formData, ekg: e.target.value })}
-                                placeholder="Hasil terlampir / Normal"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                placeholder="Contoh: F. PEMERIKSAAN RADIOLOGI / USG"
+                                className="flex-1 px-3 py-1.5 rounded-lg border border-teal-300 text-slate-900 text-xs bg-white"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleAddSection();
+                                }}
                               />
-                            </div>
-
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">G. Pemeriksaan Threadmill</label>
-                              <input
-                                type="text"
-                                value={formData.treadmill}
-                                onChange={(e) => setFormData({ ...formData, treadmill: e.target.value })}
-                                placeholder="Normal / Tidak dilakukan"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">H. Pemeriksaan Audiometri</label>
-                              <textarea
-                                rows={2}
-                                value={formData.audiometry}
-                                onChange={(e) => setFormData({ ...formData, audiometry: e.target.value })}
-                                placeholder="Rata-rata ambang dengar kedua telinga dalam batas normal..."
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">I. Pemeriksaan Spirometri</label>
-                              <input
-                                type="text"
-                                value={formData.spirometry}
-                                onChange={(e) => setFormData({ ...formData, spirometry: e.target.value })}
-                                placeholder="Restrictive / Normal"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
+                              <button
+                                type="button"
+                                onClick={handleAddSection}
+                                className="px-3 py-1.5 bg-teal-700 text-white font-bold rounded-lg text-xs hover:bg-teal-800"
+                              >
+                                Tambah
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingCategory(false)}
+                                className="px-3 py-1.5 bg-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-300"
+                              >
+                                Batal
+                              </button>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    )}
+                        )}
 
-                    {/* TAB 3: FISIK DETAIL (HALAMAN 3 & 4) */}
-                    {activeFormTab === 'physical' && (
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Pemeriksaan Fisik Umum
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Keadaan Umum</label>
-                              <input
-                                type="text"
-                                value={formData.generalCondition}
-                                onChange={(e) => setFormData({ ...formData, generalCondition: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
+                        {/* List Kategori dan Poin Pemeriksaan */}
+                        {sections.map((sec) => (
+                          <div
+                            key={sec.id}
+                            className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
+                          >
+                            {/* Section Header */}
+                            <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between">
+                              <div className="flex items-center gap-2 flex-1">
+                                <input
+                                  type="text"
+                                  value={sec.title}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSections((prev) =>
+                                      prev.map((s) => (s.id === sec.id ? { ...s, title: val } : s))
+                                    );
+                                  }}
+                                  className="font-bold text-slate-900 text-xs bg-transparent border-b border-dashed border-slate-400 hover:border-slate-700 focus:outline-none focus:border-teal-700 px-1 py-0.5 w-full max-w-sm"
+                                />
+                                <span className="text-[10px] text-slate-500 font-semibold px-2 py-0.5 bg-slate-200 rounded-full">
+                                  {sec.items.length} Poin
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSection(sec.id)}
+                                className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
+                                title="Hapus seluruh kategori ini jika tidak dilakukan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Kesadaran</label>
-                              <input
-                                type="text"
-                                value={formData.consciousness}
-                                onChange={(e) => setFormData({ ...formData, consciousness: e.target.value })}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
+
+                            {/* Section Items */}
+                            <div className="p-3 space-y-2.5">
+                              {sec.items.length === 0 ? (
+                                <p className="text-slate-400 italic text-[11px] py-1 text-center">
+                                  Kategori ini belum memiliki poin pemeriksaan. Klik &quot;+ Tambah Pemeriksaan&quot; di bawah.
+                                </p>
+                              ) : (
+                                sec.items.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-start gap-2 p-1.5 rounded-lg hover:bg-slate-50 border border-slate-100"
+                                  >
+                                    <div className="w-40 shrink-0">
+                                      <input
+                                        type="text"
+                                        value={item.name}
+                                        onChange={(e) => handleUpdateItem(sec.id, item.id, 'name', e.target.value)}
+                                        placeholder="Nama Pemeriksaan"
+                                        className="w-full px-2 py-1 rounded border border-slate-200 text-slate-900 font-semibold text-xs focus:ring-1 focus:ring-teal-600"
+                                      />
+                                    </div>
+                                    <div className="flex-1">
+                                      {item.value.includes('\n') || item.value.length > 50 ? (
+                                        <textarea
+                                          rows={2}
+                                          value={item.value}
+                                          onChange={(e) => handleUpdateItem(sec.id, item.id, 'value', e.target.value)}
+                                          placeholder="Hasil pemeriksaan..."
+                                          className="w-full px-2 py-1 rounded border border-slate-200 text-slate-900 text-xs focus:ring-1 focus:ring-teal-600"
+                                        />
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={item.value}
+                                          onChange={(e) => handleUpdateItem(sec.id, item.id, 'value', e.target.value)}
+                                          placeholder="Hasil pemeriksaan (contoh: Normal / Negatif)"
+                                          className="w-full px-2 py-1 rounded border border-slate-200 text-slate-900 text-xs focus:ring-1 focus:ring-teal-600"
+                                        />
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveItem(sec.id, item.id)}
+                                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 mt-0.5"
+                                      title="Hapus poin pemeriksaan ini jika tidak dilakukan"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+
+                              {/* Add Item Actions for this section */}
+                              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddItem(sec.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 font-semibold text-[11px] transition-colors cursor-pointer"
+                                >
+                                  <PlusCircle className="w-3.5 h-3.5 text-teal-700" />
+                                  <span>+ Tambah Pemeriksaan di {sec.title.split('.')[1]?.trim() || sec.title}</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ))}
 
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Pemeriksaan Kepala dan Leher
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Mata & Visus</label>
-                              <input
-                                type="text"
-                                value={formData.eyesVisus}
-                                onChange={(e) => setFormData({ ...formData, eyesVisus: e.target.value })}
-                                placeholder="Visus OD 20/20, OS 20/20"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Buta Warna</label>
-                              <input
-                                type="text"
-                                value={formData.colorVision}
-                                onChange={(e) => setFormData({ ...formData, colorVision: e.target.value })}
-                                placeholder="Tidak Buta warna"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Telinga</label>
-                              <input
-                                type="text"
-                                value={formData.earSecret}
-                                onChange={(e) => setFormData({ ...formData, earSecret: e.target.value })}
-                                placeholder="Tidak ada sekret"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Hidung</label>
-                              <input
-                                type="text"
-                                value={formData.noseSecret}
-                                onChange={(e) => setFormData({ ...formData, noseSecret: e.target.value })}
-                                placeholder="Tidak ada sekret"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="block font-semibold text-slate-700 mb-1">Leher</label>
-                              <input
-                                type="text"
-                                value={formData.neckGland}
-                                onChange={(e) => setFormData({ ...formData, neckGland: e.target.value })}
-                                placeholder="Tidak ada pembesaran kelenjar"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Pemeriksaan Thorax
-                          </h3>
-                          <div className="space-y-2.5">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Paru - paru</label>
-                              <input
-                                type="text"
-                                value={formData.lungsBreathSound}
-                                onChange={(e) => setFormData({ ...formData, lungsBreathSound: e.target.value })}
-                                placeholder="suara nafas vesikuler, tidak ada ronkhi/wheezing"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Jantung</label>
-                              <input
-                                type="text"
-                                value={formData.heartSound}
-                                onChange={(e) => setFormData({ ...formData, heartSound: e.target.value })}
-                                placeholder="Bunyi jantung reguler, tidak ada murmur"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 pt-2">
-                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Pemeriksaan Abdomen & Extremitas
-                          </h3>
-                          <div className="space-y-2.5">
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Inspeksi dan Palpasi</label>
-                              <input
-                                type="text"
-                                value={formData.abdomenPalpation}
-                                onChange={(e) => setFormData({ ...formData, abdomenPalpation: e.target.value })}
-                                placeholder="lunak, tidak ada nyeri tekan"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Hepar dan Lien</label>
-                              <input
-                                type="text"
-                                value={formData.liverSpleen}
-                                onChange={(e) => setFormData({ ...formData, liverSpleen: e.target.value })}
-                                placeholder="tidak teraba"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Pemeriksaan Extremitas (Atas dan Bawah)</label>
-                              <input
-                                type="text"
-                                value={formData.extremitiesDetail}
-                                onChange={(e) => setFormData({ ...formData, extremitiesDetail: e.target.value })}
-                                placeholder="tidak ada edema, kekuatan otot baik"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
-                            </div>
+                        {/* Quick Add Suggestions */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                          <span className="block font-bold text-slate-700 text-xs">
+                            Pilihan Cepat Tambah Pemeriksaan Lainnya:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {SUGGESTED_EXAMS.map((sug) => (
+                              <button
+                                key={sug}
+                                type="button"
+                                onClick={() => {
+                                  // Add to last section or create custom section
+                                  if (sections.length > 0) {
+                                    handleAddItem(sections[sections.length - 1].id, sug, 'Dalam batas normal');
+                                    success(`Pemeriksaan "${sug}" berhasil ditambahkan.`);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-300 rounded text-[11px] text-slate-700 hover:text-teal-900 transition-colors cursor-pointer"
+                              >
+                                + {sug}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* TAB 4: KESIMPULAN & SARAN */}
+                    {/* TAB 3: KESIMPULAN & SARAN */}
                     {activeFormTab === 'conclusion' && (
                       <div className="space-y-4">
                         <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                          Kesimpulan
+                          Kesimpulan Kelayakan Kerja / MCU
                         </h3>
 
                         <div className="space-y-2.5">
@@ -1330,7 +1136,13 @@ export default function McuPage() {
                             <span className="font-bold text-slate-900">Sehat</span>
                           </label>
 
-                          <div className={`p-2.5 rounded-lg border ${formData.conclusionType === 'Sehat dengan catatan' ? 'border-amber-400 bg-amber-50/50' : 'border-slate-200'}`}>
+                          <div
+                            className={`p-2.5 rounded-lg border ${
+                              formData.conclusionType === 'Sehat dengan catatan'
+                                ? 'border-amber-400 bg-amber-50/50'
+                                : 'border-slate-200'
+                            }`}
+                          >
                             <label className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="radio"
@@ -1346,22 +1158,28 @@ export default function McuPage() {
                                 type="text"
                                 value={formData.conclusionNotes}
                                 onChange={(e) => setFormData({ ...formData, conclusionNotes: e.target.value })}
-                                placeholder="perbaiki pola makan dan olahraga teratur, gangguan pendengaran"
+                                placeholder="Contoh: perbaiki pola makan dan olahraga teratur, gangguan pendengaran"
                                 className="w-full mt-2 px-3 py-1.5 rounded border border-amber-300 text-slate-900 bg-white"
                               />
                             )}
                           </div>
 
-                          <div className={`p-2.5 rounded-lg border ${formData.conclusionType === 'Temporary Unfit' ? 'border-rose-400 bg-rose-50/50' : 'border-slate-200'}`}>
+                          <div
+                            className={`p-2.5 rounded-lg border ${
+                              formData.conclusionType === 'Temporary Unfit'
+                                ? 'border-orange-400 bg-orange-50/50'
+                                : 'border-slate-200'
+                            }`}
+                          >
                             <label className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="radio"
                                 name="kesimpulan"
                                 checked={formData.conclusionType === 'Temporary Unfit'}
                                 onChange={() => setFormData({ ...formData, conclusionType: 'Temporary Unfit' })}
-                                className="text-rose-600 focus:ring-rose-500"
+                                className="text-orange-600 focus:ring-orange-500"
                               />
-                              <span className="font-bold text-slate-900">Temporary unfit, _____________</span>
+                              <span className="font-bold text-slate-900">Temporary unfit :</span>
                             </label>
                             {formData.conclusionType === 'Temporary Unfit' && (
                               <input
@@ -1369,28 +1187,34 @@ export default function McuPage() {
                                 value={formData.temporaryUnfitNotes}
                                 onChange={(e) => setFormData({ ...formData, temporaryUnfitNotes: e.target.value })}
                                 placeholder="Alasan temporary unfit..."
-                                className="w-full mt-2 px-3 py-1.5 rounded border border-rose-300 text-slate-900 bg-white"
+                                className="w-full mt-2 px-3 py-1.5 rounded border border-orange-300 text-slate-900 bg-white"
                               />
                             )}
                           </div>
 
-                          <div className={`p-2.5 rounded-lg border ${formData.conclusionType === 'Unfit' ? 'border-rose-500 bg-rose-50/50' : 'border-slate-200'}`}>
+                          <div
+                            className={`p-2.5 rounded-lg border ${
+                              formData.conclusionType === 'Unfit'
+                                ? 'border-rose-400 bg-rose-50/50'
+                                : 'border-slate-200'
+                            }`}
+                          >
                             <label className="flex items-center gap-2 cursor-pointer">
                               <input
                                 type="radio"
                                 name="kesimpulan"
                                 checked={formData.conclusionType === 'Unfit'}
                                 onChange={() => setFormData({ ...formData, conclusionType: 'Unfit' })}
-                                className="text-rose-700 focus:ring-rose-500"
+                                className="text-rose-600 focus:ring-rose-500"
                               />
-                              <span className="font-bold text-slate-900">Unfit, _____________</span>
+                              <span className="font-bold text-slate-900">Unfit :</span>
                             </label>
                             {formData.conclusionType === 'Unfit' && (
                               <input
                                 type="text"
                                 value={formData.unfitNotes}
                                 onChange={(e) => setFormData({ ...formData, unfitNotes: e.target.value })}
-                                placeholder="Alasan unfit..."
+                                placeholder="Alasan tidak layak bekerja (unfit)..."
                                 className="w-full mt-2 px-3 py-1.5 rounded border border-rose-300 text-slate-900 bg-white"
                               />
                             )}
@@ -1399,37 +1223,43 @@ export default function McuPage() {
 
                         <div className="space-y-3 pt-2">
                           <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
-                            Saran Saran
+                            SARAN - SARAN (1 baris per poin)
                           </h3>
                           <textarea
                             rows={4}
                             value={formData.recommendations}
                             onChange={(e) => setFormData({ ...formData, recommendations: e.target.value })}
-                            placeholder="Konsul Dokter Spesialis THT&#10;Konsul Gizi&#10;Berhenti merokok"
-                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 leading-normal"
+                            placeholder="Tulis saran dokter per baris..."
+                            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
                           />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 pt-2">
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">Dokter Pemeriksa *</label>
-                            <input
-                              type="text"
-                              required
-                              value={formData.doctorName}
-                              onChange={(e) => setFormData({ ...formData, doctorName: e.target.value })}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold text-slate-900"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-semibold text-slate-700 mb-1">SIP Dokter Pemeriksa</label>
-                            <input
-                              type="text"
-                              value={formData.doctorSip}
-                              onChange={(e) => setFormData({ ...formData, doctorSip: e.target.value })}
-                              placeholder="SIP.MR3203..."
-                              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-mono"
-                            />
+                        <div className="space-y-3 pt-2">
+                          <h3 className="font-bold text-slate-900 uppercase tracking-wider text-teal-800 pb-1 border-b">
+                            Dokter Pemeriksa
+                          </h3>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block font-semibold text-slate-700 mb-1">Nama Lengkap Dokter *</label>
+                              <input
+                                type="text"
+                                required
+                                value={formData.doctorName}
+                                onChange={(e) => setFormData({ ...formData, doctorName: e.target.value })}
+                                placeholder="dr. Arinda Puteri P"
+                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-bold"
+                              />
+                            </div>
+                            <div>
+                              <label className="block font-semibold text-slate-700 mb-1">Nomor SIP Dokter</label>
+                              <input
+                                type="text"
+                                value={formData.doctorSip}
+                                onChange={(e) => setFormData({ ...formData, doctorSip: e.target.value })}
+                                placeholder="SIP.MR3203..."
+                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-mono"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1437,31 +1267,37 @@ export default function McuPage() {
                   </div>
                 </div>
 
-                {/* PANEL KANAN: LIVE 4-PAGE REALISTIC DOCUMENT PREVIEW */}
+                {/* PANEL KANAN: LIVE DYNAMIC MULTI-PAGE DOCUMENT PREVIEW */}
                 <div className="w-full lg:w-1/2 flex flex-col bg-slate-300/80 overflow-y-auto p-3 sm:p-5">
                   {/* Page Navigator Toolbar */}
                   <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-300 shadow-xs mb-4 text-xs shrink-0">
-                    <span className="font-bold text-slate-700">Tampilan Halaman Cetak A4:</span>
-                    <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-700">
+                      Tampilan Cetak A4 ({totalPages} Halaman Otomatis):
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setActivePreviewPage('all')}
                         className={`px-2.5 py-1 rounded font-semibold transition-colors cursor-pointer ${
-                          activePreviewPage === 'all' ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          activePreviewPage === 'all'
+                            ? 'bg-teal-700 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        Semua (4 Hal)
+                        Semua ({totalPages} Hal)
                       </button>
-                      {[1, 2, 3, 4].map((pNum) => (
+                      {paginatedPages.map((page) => (
                         <button
-                          key={pNum}
+                          key={page.pageNumber}
                           type="button"
-                          onClick={() => setActivePreviewPage(pNum)}
+                          onClick={() => setActivePreviewPage(page.pageNumber)}
                           className={`px-2.5 py-1 rounded font-semibold transition-colors cursor-pointer ${
-                            activePreviewPage === pNum ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            activePreviewPage === page.pageNumber
+                              ? 'bg-teal-700 text-white'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
-                          Hal {pNum}
+                          Hal {page.pageNumber}
                         </button>
                       ))}
                     </div>
@@ -1469,373 +1305,231 @@ export default function McuPage() {
 
                   {/* DOCUMENT PAGES CONTAINER */}
                   <div className="space-y-6 max-w-[595px] mx-auto w-full">
-                    {/* =================================================== */}
-                    {/* HALAMAN 1 (RESUME BAGIAN 1)                         */}
-                    {/* =================================================== */}
-                    {(activePreviewPage === 'all' || activePreviewPage === 1) && (
-                      <div className="bg-white shadow-xl rounded-lg px-12 py-8 sm:px-14 space-y-3.5 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-                        {/* Header Image */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/header-hasil.jpeg"
-                          alt="Header RS"
-                          className="w-full h-auto object-contain rounded"
-                        />
+                    {paginatedPages.map((page) => {
+                      if (activePreviewPage !== 'all' && activePreviewPage !== page.pageNumber) {
+                        return null;
+                      }
 
-                        {/* Title Dua Baris Biru Agak Tua Center */}
-                        <div className="text-center font-bold text-[11px] uppercase tracking-wide text-blue-900 leading-tight pt-1">
-                          <div>RESUME HASIL PEMERIKSAAN</div>
-                          <div>MEDICAL CHECK UP (MCU KERJA)</div>
-                        </div>
+                      return (
+                        <div
+                          key={page.pageNumber}
+                          className="bg-white shadow-2xl rounded-xs px-10 py-6 sm:px-12 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative flex flex-col justify-between mx-auto shrink-0 overflow-hidden"
+                          style={{
+                            fontFamily: 'Arial, Helvetica, sans-serif',
+                            width: '595px',
+                            minHeight: '842px',
+                            height: '842px',
+                          }}
+                        >
+                          {/* Konten Utama Halaman A4 */}
+                          <div className="space-y-2.5 flex-1 flex flex-col justify-start overflow-hidden">
+                          {/* Header Image on EVERY page */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src="/header-hasil.jpeg"
+                            alt="Header RS"
+                            className="w-full h-auto object-contain rounded"
+                          />
 
-                        {/* TABEL HANYA UNTUK IDENTITAS PASIEN (JUDUL DI LUAR TABEL) */}
-                        <div>
-                          <p className="font-bold text-[9px] uppercase text-slate-900 mb-1">IDENTITAS PASIEN</p>
-                          <table className="w-full border-collapse border border-slate-800 text-[9.5px]">
-                            <tbody className="divide-y divide-slate-300">
-                            <tr>
-                              <td className="p-1.5 w-36 font-bold text-slate-800 border-r border-slate-300">Nama</td>
-                              <td className="p-1.5 font-bold text-slate-900">: {formData.patientName || '[Nama Pasien]'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Umur / Jenis Kelamin</td>
-                              <td className="p-1.5">: {formData.ageGender}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Tanggal Lahir</td>
-                              <td className="p-1.5">: {formData.birthDate || '-'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Alamat</td>
-                              <td className="p-1.5">: {formData.address || '-'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Tanggal Pemeriksaan</td>
-                              <td className="p-1.5">: {formData.examDate}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Keperluan</td>
-                              <td className="p-1.5">: {formData.purpose}</td>
-                            </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                        {/* POINT-POINT TANPA TABEL (A, B, C) */}
-                        <div className="space-y-3 pt-1 text-[9.5px]">
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">A. TANDA VITAL</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Tekanan Darah</span><span>: {formData.bloodPressure}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Nadi</span><span>: {formData.pulse}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Pernafasan</span><span>: {formData.respiration}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Suhu</span><span>: {formData.temperature}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Kesadaran</span><span>: {formData.consciousness}</span></div>
-                            </div>
-                          </div>
+                          {/* Judul & Identitas hanya di Halaman 1 */}
+                          {page.isFirstPage && (
+                            <>
+                              <div className="text-center font-bold text-[11px] uppercase tracking-wide text-blue-900 leading-tight pt-1">
+                                <div>RESUME HASIL PEMERIKSAAN</div>
+                                <div>MEDICAL CHECK UP ({formData.purpose || 'MCU KERJA'})</div>
+                              </div>
 
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">B. ANTROPOMETRI</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Berat Badan (BB)</span><span>: {formData.weight} kg</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Tinggi Badan (TB)</span><span>: {formData.height} cm</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">IMT / BMI</span><span>: {formData.bmi}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Status Gizi</span><span>: {formData.nutritionStatus}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">C. Pemeriksaan Fisik</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Kepala</span><span>: {formData.head}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Gigi</span><span>: {formData.teeth}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Telinga, Hidung, Tenggorokan</span><span>: {formData.ent}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Leher</span><span>: {formData.neck}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Jantung</span><span>: {formData.heart}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Paru paru</span><span>: {formData.lungs}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Abdomen</span><span>: {formData.abdomen}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Ekstremelitas Atas dan Bawah</span><span>: {formData.extremities}</span></div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer Page Number */}
-                        <div className="pt-3 border-t border-slate-200 text-center text-[11pt] text-slate-700 font-medium" style={{ fontFamily: 'Cambria, Georgia, serif' }}>
-                          Page 1 of 4
-                        </div>
-                      </div>
-                    )}
-
-                    {/* =================================================== */}
-                    {/* HALAMAN 2 (RESUME BAGIAN 2: LAB & PENUNJANG)        */}
-                    {/* =================================================== */}
-                    {(activePreviewPage === 'all' || activePreviewPage === 2) && (
-                      <div className="bg-white shadow-xl rounded-lg px-12 py-8 sm:px-14 space-y-4 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/header-hasil.jpeg"
-                          alt="Header RS"
-                          className="w-full h-auto object-contain rounded"
-                        />
-
-                        {/* POINT-POINT TANPA TABEL (D, E, F, G, H, I) */}
-                        <div className="space-y-3.5 pt-2 text-[9.5px]">
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">D. Pemeriksaan Laboratorium</p>
-                            <div className="space-y-1 pl-3">
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">Darah Lengkap</span><span>: {formData.completeBlood}</span></div>
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">Urine Lengkap</span><span>: {formData.completeUrine}</span></div>
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">GDP, Kolestrol Total, LDL, Kreatinin, Ureum, Asam Urat</span><span>: {formData.bloodChemistry}</span></div>
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">TG, HDL, SGOT, SGPT</span><span>: {formData.lipidLiver}</span></div>
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">HBsAg</span><span>: {formData.hbsag}</span></div>
-                              <div className="flex"><span className="w-56 font-medium text-slate-700">Tes NAFZA (6 Parameter)</span><span>: {formData.drugTest}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">E. Pemeriksaan Rontgen Thorax</p>
-                            <div className="pl-3">
-                              <span className="font-medium text-slate-700 block mb-0.5">Gambaran Rontgen:</span>
-                              <p className="whitespace-pre-line text-slate-800 bg-slate-50 p-2 rounded border border-slate-200 text-[9px] leading-relaxed">
-                                {formData.thoraxXray}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <div>
-                              <p className="font-bold text-blue-900">F. Pemeriksaan EKG</p>
-                              <div className="pl-3 flex"><span className="w-44 font-medium text-slate-700">Hasil EKG</span><span>: {formData.ekg}</span></div>
-                            </div>
-
-                            <div>
-                              <p className="font-bold text-blue-900">G. Pemeriksaan Threadmill</p>
-                              <div className="pl-3 flex"><span className="w-44 font-medium text-slate-700">Hasil Threadmill</span><span>: {formData.treadmill}</span></div>
-                            </div>
-
-                            <div>
-                              <p className="font-bold text-blue-900">H. Pemeriksaan Audiometri</p>
-                              <div className="pl-3 flex"><span className="w-44 font-medium text-slate-700">Hasil Audiometri</span><span>: {formData.audiometry}</span></div>
-                            </div>
-
-                            <div>
-                              <p className="font-bold text-blue-900">I. Pemeriksaan Spirometri</p>
-                              <div className="pl-3 flex"><span className="w-44 font-medium text-slate-700">Hasil Spirometri</span><span>: {formData.spirometry}</span></div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer Page Number */}
-                        <div className="pt-3 border-t border-slate-200 text-center text-[11pt] text-slate-700 font-medium" style={{ fontFamily: 'Cambria, Georgia, serif' }}>
-                          Page 2 of 4
-                        </div>
-                      </div>
-                    )}
-
-                    {/* =================================================== */}
-                    {/* HALAMAN 3 (HASIL PEMERIKSAAN FISIK DETAIL)          */}
-                    {/* =================================================== */}
-                    {(activePreviewPage === 'all' || activePreviewPage === 3) && (
-                      <div className="bg-white shadow-xl rounded-lg px-12 py-8 sm:px-14 space-y-3.5 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-                        {/* Header Image */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/header-hasil.jpeg"
-                          alt="Header RS"
-                          className="w-full h-auto object-contain rounded"
-                        />
-
-                        {/* Title Dua Baris Biru Agak Tua Center */}
-                        <div className="text-center font-bold text-[11px] uppercase tracking-wide text-blue-900 leading-tight pt-1">
-                          <div>HASIL PEMERIKSAAN FISIK</div>
-                          <div>MEDICAL CHECK UP (MCU KERJA)</div>
-                        </div>
-
-                        {/* TABEL IDENTITAS (JUDUL DI LUAR TABEL) */}
-                        <div>
-                          <p className="font-bold text-[9px] uppercase text-slate-900 mb-1">IDENTITAS</p>
-                          <table className="w-full border-collapse border border-slate-800 text-[9.5px]">
-                            <tbody className="divide-y divide-slate-300">
-                            <tr>
-                              <td className="p-1.5 w-36 font-bold text-slate-800 border-r border-slate-300">Nama</td>
-                              <td className="p-1.5 font-bold text-slate-900">: {formData.patientName || '[Nama Pasien]'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Umur / Jenis Kelamin</td>
-                              <td className="p-1.5">: {formData.ageGender}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Tanggal Lahir</td>
-                              <td className="p-1.5">: {formData.birthDate || '-'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Alamat</td>
-                              <td className="p-1.5">: {formData.address || '-'}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Tanggal Pemeriksaan</td>
-                              <td className="p-1.5">: {formData.examDate}</td>
-                            </tr>
-                            <tr>
-                              <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">Keperluan</td>
-                              <td className="p-1.5">: {formData.purpose}</td>
-                            </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                        {/* DETAIL FISIK TANPA TABEL */}
-                        <div className="space-y-2.5 pt-1 text-[9.5px]">
-                          <div>
-                            <p className="font-bold text-blue-900 mb-0.5">Pemeriksaan Tanda Vital</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Tekanan Darah</span><span>: {formData.bloodPressure}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Nadi</span><span>: {formData.pulse}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Pernafasan</span><span>: {formData.respiration}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Suhu</span><span>: {formData.temperature}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Berat Badan (BB)</span><span>: {formData.weight} Kg</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Tinggi Badan (TB)</span><span>: {formData.height} cm</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">IMT / BMI</span><span>: {formData.bmi}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-0.5">Pemeriksaan Fisik Umum</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Keadaan Umum</span><span>: {formData.generalCondition}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Kesadaran</span><span>: {formData.consciousness}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-0.5">Pemeriksaan Kepala dan Leher</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Mata & Visus</span><span>: {formData.eyesVisus}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Buta Warna</span><span>: {formData.colorVision}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Telinga</span><span>: {formData.earSecret}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Hidung</span><span>: {formData.noseSecret}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Leher</span><span>: {formData.neckGland}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-0.5">Pemeriksaan Thorax</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Paru - paru</span><span>: {formData.lungsBreathSound}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Jantung</span><span>: {formData.heartSound}</span></div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer Page Number */}
-                        <div className="pt-3 border-t border-slate-200 text-center text-[11pt] text-slate-700 font-medium" style={{ fontFamily: 'Cambria, Georgia, serif' }}>
-                          Page 3 of 4
-                        </div>
-                      </div>
-                    )}
-
-                    {/* =================================================== */}
-                    {/* HALAMAN 4 (ABDOMEN, KESIMPULAN, SARAN & TTD)        */}
-                    {/* =================================================== */}
-                    {(activePreviewPage === 'all' || activePreviewPage === 4) && (
-                      <div className="bg-white shadow-xl rounded-lg px-12 py-8 sm:px-14 space-y-4 border border-slate-300 text-[11pt] leading-relaxed text-slate-900 relative" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/header-hasil.jpeg"
-                          alt="Header RS"
-                          className="w-full h-auto object-contain rounded"
-                        />
-
-                        {/* DETAIL LANJUTAN TANPA TABEL */}
-                        <div className="space-y-3 pt-1 text-[9.5px]">
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">Pemeriksaan Abdomen</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Inspeksi dan Palpasi</span><span>: {formData.abdomenPalpation}</span></div>
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Hepar dan Lien</span><span>: {formData.liverSpleen}</span></div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="font-bold text-blue-900 mb-1">Pemeriksaan Extremitas</p>
-                            <div className="space-y-0.5 pl-3">
-                              <div className="flex"><span className="w-44 font-medium text-slate-700">Atas dan Bawah</span><span>: {formData.extremitiesDetail}</span></div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* KESIMPULAN (TANPA BORDER KOTAK LUAR) */}
-                        <div>
-                          <p className="font-bold text-blue-900 mb-1">Kesimpulan</p>
-                          <div className="space-y-1.5 pl-3">
-                            <div className="flex items-center gap-2">
-                              <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] ${formData.conclusionType === 'Sehat' ? 'bg-blue-900 text-white border-blue-900' : 'border-slate-400'}`}>
-                                {formData.conclusionType === 'Sehat' ? '✓' : ''}
-                              </span>
-                              <span>Sehat</span>
-                            </div>
-
-                            <div className="flex items-start gap-2">
-                              <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${formData.conclusionType === 'Sehat dengan catatan' ? 'bg-blue-900 text-white border-blue-900' : 'border-slate-400'}`}>
-                                {formData.conclusionType === 'Sehat dengan catatan' ? '✓' : ''}
-                              </span>
-                              <span>
-                                Sehat dengan catatan : <strong className="text-slate-800 font-semibold">{formData.conclusionNotes || '_____________'}</strong>
-                              </span>
-                            </div>
-
-                            <div className="flex items-start gap-2">
-                              <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${formData.conclusionType === 'Temporary Unfit' ? 'bg-blue-900 text-white border-blue-900' : 'border-slate-400'}`}>
-                                {formData.conclusionType === 'Temporary Unfit' ? '✓' : ''}
-                              </span>
-                              <span>
-                                Temporary unfit, <strong className="text-slate-800 font-semibold">{formData.temporaryUnfitNotes || '_____________'}</strong>
-                              </span>
-                            </div>
-
-                            <div className="flex items-start gap-2">
-                              <span className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${formData.conclusionType === 'Unfit' ? 'bg-blue-900 text-white border-blue-900' : 'border-slate-400'}`}>
-                                {formData.conclusionType === 'Unfit' ? '✓' : ''}
-                              </span>
-                              <span>
-                                Unfit, <strong className="text-slate-800 font-semibold">{formData.unfitNotes || '_____________'}</strong>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* SARAN SARAN (TANPA BORDER KOTAK LUAR) */}
-                        <div>
-                          <p className="font-bold text-blue-900 mb-1">SARAN - SARAN</p>
-                          <div className="space-y-1 pl-3">
-                            {formData.recommendations ? (
-                              formData.recommendations.split('\n').filter((s) => s.trim() !== '').map((s, idx) => (
-                                <p key={idx} className="text-slate-800">
-                                  • {s}
+                              <div>
+                                <p className="font-bold text-[9px] uppercase text-slate-900 mb-1">
+                                  IDENTITAS PASIEN
                                 </p>
-                              ))
-                            ) : (
-                              <p className="text-slate-400 italic">• Tidak ada saran khusus.</p>
-                            )}
-                          </div>
-                        </div>
+                                <table className="w-full border-collapse border border-slate-800 text-[9.5px]">
+                                  <tbody className="divide-y divide-slate-300">
+                                    <tr>
+                                      <td className="p-1.5 w-36 font-bold text-slate-800 border-r border-slate-300">
+                                        Nama
+                                      </td>
+                                      <td className="p-1.5 font-bold text-slate-900">
+                                        : {formData.patientName || '[Nama Pasien]'}
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
+                                        Umur / Jenis Kelamin
+                                      </td>
+                                      <td className="p-1.5">: {formData.ageGender}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
+                                        Tanggal Lahir
+                                      </td>
+                                      <td className="p-1.5">: {formData.birthDate || '-'}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
+                                        Alamat
+                                      </td>
+                                      <td className="p-1.5">: {formData.address || '-'}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
+                                        Tanggal Pemeriksaan
+                                      </td>
+                                      <td className="p-1.5">: {formData.examDate}</td>
+                                    </tr>
+                                    <tr>
+                                      <td className="p-1.5 font-bold text-slate-800 border-r border-slate-300">
+                                        Keperluan
+                                      </td>
+                                      <td className="p-1.5">: {formData.purpose}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </>
+                          )}
 
-                        {/* TANDA TANGAN DOKTER */}
-                        <div className="pt-2 flex justify-end text-[9.5px]">
-                          <div className="w-52 text-center space-y-1">
-                            <p className="text-slate-700">Dokter Pemeriksa,</p>
-                            <div className="h-14 flex items-center justify-center text-slate-300 italic text-[9px]">
-                              (Tanda Tangan)
+                          {/* Examination Sections on this page */}
+                          <div className="space-y-3 pt-1 text-[9.5px]">
+                            {page.sections.map((secChunk, idx) => (
+                              <div key={idx} className="space-y-1">
+                                <p className="font-bold text-blue-900">{secChunk.sectionTitle}</p>
+                                <div className="space-y-0.5 pl-3">
+                                  {secChunk.items.map((it) => (
+                                    <div key={it.id} className="flex">
+                                      <span className="w-44 font-medium text-slate-700 shrink-0">
+                                        {it.name}
+                                      </span>
+                                      <span className="text-slate-900 whitespace-pre-line">
+                                        : {it.value || '-'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Kesimpulan, Saran & TTD jika berada di halaman ini */}
+                          {page.hasConclusionAndSign && (
+                            <div className="space-y-3 pt-2 text-[9.5px]">
+                              {/* KESIMPULAN */}
+                              <div>
+                                <p className="font-bold text-blue-900 mb-1">Kesimpulan</p>
+                                <div className="space-y-1 pl-3">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] ${
+                                        formData.conclusionType === 'Sehat'
+                                          ? 'bg-blue-900 text-white border-blue-900'
+                                          : 'border-slate-400'
+                                      }`}
+                                    >
+                                      {formData.conclusionType === 'Sehat' ? '✓' : ''}
+                                    </span>
+                                    <span>Sehat</span>
+                                  </div>
+
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
+                                        formData.conclusionType === 'Sehat dengan catatan'
+                                          ? 'bg-blue-900 text-white border-blue-900'
+                                          : 'border-slate-400'
+                                      }`}
+                                    >
+                                      {formData.conclusionType === 'Sehat dengan catatan' ? '✓' : ''}
+                                    </span>
+                                    <span>
+                                      Sehat dengan catatan :{' '}
+                                      <strong className="text-slate-800 font-semibold">
+                                        {formData.conclusionNotes || '_____________'}
+                                      </strong>
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
+                                        formData.conclusionType === 'Temporary Unfit'
+                                          ? 'bg-blue-900 text-white border-blue-900'
+                                          : 'border-slate-400'
+                                      }`}
+                                    >
+                                      {formData.conclusionType === 'Temporary Unfit' ? '✓' : ''}
+                                    </span>
+                                    <span>
+                                      Temporary unfit :{' '}
+                                      <strong className="text-slate-800 font-semibold">
+                                        {formData.temporaryUnfitNotes || '_____________'}
+                                      </strong>
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      className={`w-3.5 h-3.5 border rounded flex items-center justify-center font-bold text-[8.5px] mt-0.5 ${
+                                        formData.conclusionType === 'Unfit'
+                                          ? 'bg-blue-900 text-white border-blue-900'
+                                          : 'border-slate-400'
+                                      }`}
+                                    >
+                                      {formData.conclusionType === 'Unfit' ? '✓' : ''}
+                                    </span>
+                                    <span>
+                                      Unfit :{' '}
+                                      <strong className="text-slate-800 font-semibold">
+                                        {formData.unfitNotes || '_____________'}
+                                      </strong>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* SARAN - SARAN */}
+                              <div>
+                                <p className="font-bold text-blue-900 mb-1">SARAN - SARAN</p>
+                                <div className="space-y-0.5 pl-3">
+                                  {formData.recommendations ? (
+                                    formData.recommendations
+                                      .split('\n')
+                                      .filter((s) => s.trim() !== '')
+                                      .map((s, sIdx) => (
+                                        <p key={sIdx} className="text-slate-800">
+                                          • {s}
+                                        </p>
+                                      ))
+                                  ) : (
+                                    <p className="text-slate-400 italic">• Tidak ada saran khusus.</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* TANDA TANGAN DOKTER */}
+                              <div className="pt-2 flex justify-end text-[9.5px]">
+                                <div className="w-52 text-center space-y-1">
+                                  <p className="text-slate-700">Dokter Pemeriksa,</p>
+                                  <div className="h-12 flex items-center justify-center text-slate-300 italic text-[9px]">
+                                    (Tanda Tangan)
+                                  </div>
+                                  <p className="font-bold text-slate-900 underline">{formData.doctorName}</p>
+                                  <p className="text-slate-500 text-[8.5px] font-mono">{formData.doctorSip}</p>
+                                </div>
+                              </div>
                             </div>
-                            <p className="font-bold text-slate-900 underline">{formData.doctorName}</p>
-                            <p className="text-slate-500 text-[8.5px] font-mono">{formData.doctorSip}</p>
+                          )}
+                          </div>
+
+                          {/* Footer Nomor Halaman di Bagian Bawah Kertas A4 */}
+                          <div
+                            className="pt-2 border-t border-slate-300 text-center text-[10.5pt] text-slate-700 font-medium shrink-0 mt-auto"
+                            style={{ fontFamily: 'Cambria, Georgia, serif' }}
+                          >
+                            Page {page.pageNumber} of {totalPages}
                           </div>
                         </div>
-
-                        {/* Footer Page Number */}
-                        <div className="pt-3 border-t border-slate-200 text-center text-[11pt] text-slate-700 font-medium" style={{ fontFamily: 'Cambria, Georgia, serif' }}>
-                          Page 4 of 4
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1846,9 +1540,9 @@ export default function McuPage() {
         {/* Modal Konfirmasi Hapus Laporan MCU */}
         <ConfirmModal
           isOpen={!!reportToDelete}
-          title="Konfirmasi Hapus Laporan MCU"
-          message={`Apakah Anda yakin ingin menghapus data laporan MCU pasien ${reportToDelete?.patientName}? Laporan yang dihapus tidak dapat dipulihkan.`}
-          confirmText="Ya, Hapus Laporan"
+          title="Hapus Laporan MCU Pasien"
+          message={`Apakah Anda yakin ingin menghapus data laporan hasil MCU pasien "${reportToDelete?.patientName}" (${reportToDelete?.reportNumber})? Tindakan ini tidak dapat dibatalkan.`}
+          confirmText="Hapus Permanen"
           cancelText="Batal"
           onConfirm={confirmDeleteReport}
           onCancel={() => setReportToDelete(null)}

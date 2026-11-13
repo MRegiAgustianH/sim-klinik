@@ -25,8 +25,10 @@ export class GformSyncService {
   constructor(private readonly db: DatabaseService) {
     const possiblePaths = [
       path.join(process.cwd(), 'google-credentials.json'),
+      path.join(process.cwd(), 'server', 'google-credentials.json'),
       path.join(process.cwd(), '..', 'google-credentials.json'),
       path.join(__dirname, '..', '..', 'google-credentials.json'),
+      path.join(__dirname, '..', '..', '..', 'google-credentials.json'),
     ];
 
     this.credentialsPath = possiblePaths[0];
@@ -287,7 +289,13 @@ export class GformSyncService {
       let colPassport = headerRow.findIndex((h) => h.includes('passport') || h.includes('paspor'));
       let colGender = headerRow.findIndex((h) => h.includes('kelamin') || h.includes('gender'));
       let colTtl = headerRow.findIndex((h) => h.includes('tempat') || h.includes('tanggal lahir') || h.includes('lahir'));
-      let colEmail = headerRow.findIndex((h) => (h.includes('email') && h.includes('aktif')) || h.includes('email'));
+      let colEmail = headerRow.findIndex((h) => h.includes('email') && h.includes('aktif'));
+      if (colEmail === -1) {
+        colEmail = headerRow.findIndex((h) => h.includes('email') && !h.includes('address'));
+      }
+      if (colEmail === -1) {
+        colEmail = headerRow.findIndex((h) => h.includes('email'));
+      }
       let colAlamat = headerRow.findIndex((h) => h.includes('alamat'));
       let colHp = headerRow.findIndex((h) => h.includes('whatsapp') || h.includes('wa') || h.includes('telepon') || h.includes('hp'));
       let colPekerjaan = headerRow.findIndex((h) => h.includes('pekerjaan') || h.includes('profesi'));
@@ -323,8 +331,26 @@ export class GformSyncService {
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i] as string[];
-        const rawNik = colNik !== -1 && row[colNik] ? row[colNik].toString().trim().replace(/\D/g, '') : '';
+        let rawNik = colNik !== -1 && row[colNik] ? row[colNik].toString().trim() : '';
         const rawNama = colNama !== -1 && row[colNama] ? row[colNama].toString().trim() : '';
+
+        // Bersihkan NIK jika memuat angka, atau pertahankan teks jika input uji coba (misal 'snan')
+        const nikDigitsOnly = rawNik.replace(/\D/g, '');
+        if (nikDigitsOnly.length > 0) {
+          rawNik = nikDigitsOnly;
+        }
+
+        // Jika baris kosong tanpa nama dan tanpa NIK, lewati
+        if (!rawNama && !rawNik) {
+          continue;
+        }
+
+        // Jika ada nama namun NIK kosong di Google Sheets, buatkan ID pengganti otomatis
+        if (!rawNik && rawNama) {
+          rawNik = `GEN${Date.now().toString().slice(-13)}`;
+        }
+
+        const cleanNama = rawNama || 'Pasien Tanpa Nama';
         const rawPassport = colPassport !== -1 && row[colPassport] ? row[colPassport].toString().trim() : '';
         const rawGenderStr = colGender !== -1 && row[colGender] ? row[colGender].toString().trim().toLowerCase() : '';
         const rawTtl = colTtl !== -1 && row[colTtl] ? row[colTtl].toString().trim() : '';
@@ -339,22 +365,24 @@ export class GformSyncService {
         const rawInfoSource = colInfoSource !== -1 && row[colInfoSource] ? row[colInfoSource].toString().trim() : 'Sosial Media';
         const currentSync = colSync !== -1 && row[colSync] ? row[colSync].toString().trim() : '';
 
-        if (currentSync === 'TERSIMPAN' || !rawNik || !rawNama) {
-          continue;
-        }
-
         const rowNumber = i + 1;
 
-        // Idempotensi: Cek duplikasi NIK pada hari yang sama
+        // Idempotensi: Cek apakah data pasien ini sudah ada di database lokal
         const existing = this.db.get<{ id: number; fullName: string }>(
           `SELECT id, fullName FROM vaccination_records
            WHERE nik = ? AND (plannedDate = ? OR SUBSTR(createdAt, 1, 10) = ?)`,
           [rawNik, todayStr, todayStr]
         );
 
+        // Jika di sheet sudah TERSIMPAN dan datanya memang sudah tercatat di DB -> lewati
+        if (currentSync.startsWith('TERSIMPAN') && existing) {
+          continue;
+        }
+
+        // Jika data sudah tercatat di DB namun di sheet belum TERSIMPAN -> tandai TERSIMPAN (DUPLIKAT)
         if (existing) {
           await this.markRowSync(config.spreadsheetId, sheetName, colSyncLetter, rowNumber, colSync + 1, 'TERSIMPAN (DUPLIKAT)');
-          this.logger.log(`Data dilewati karena sudah terdaftar hari ini (Duplikat): ${rawNama} (${rawNik})`);
+          this.logger.log(`Data dilewati karena sudah terdaftar hari ini (Duplikat): ${cleanNama} (${rawNik})`);
           continue;
         }
 
@@ -405,7 +433,7 @@ export class GformSyncService {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             rawNik.padEnd(16, '0').substring(0, 16),
-            rawNama,
+            cleanNama,
             gender,
             birthPlace,
             birthDate,

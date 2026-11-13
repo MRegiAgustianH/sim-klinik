@@ -197,6 +197,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    // Migrasi kolom baru: examinationSections
+    try {
+      this.db.exec('ALTER TABLE mcu_reports ADD COLUMN examinationSections TEXT;');
+    } catch {
+      // Kolom sudah ada
+    }
   }
 
   private seedInitialData() {

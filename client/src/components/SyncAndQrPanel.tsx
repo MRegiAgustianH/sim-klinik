@@ -35,7 +35,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
 
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<GformConfig>({
-    gformUrl: 'https://forms.gle/UQbvWGhwFHSknGkv5',
+    gformUrl: 'https://forms.gle/YQn3NVjU1eaFXZ2f6',
     spreadsheetId: '',
     sheetName: 'Form Responses 1',
     syncEnabled: true,
@@ -143,7 +143,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
           <div className="flex items-center gap-4 shrink-0">
             <div className="p-2.5 rounded-xl border-2 border-teal-600/30 bg-white shadow-xs">
               <QRCodeSVG
-                value={config.gformUrl || 'https://forms.gle/UQbvWGhwFHSknGkv5'}
+                value={config.gformUrl || 'https://forms.gle/YQn3NVjU1eaFXZ2f6'}
                 size={88}
                 level="M"
                 includeMargin={false}
@@ -262,7 +262,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
               {/* QR Code Besar */}
               <div className="inline-block p-4 bg-white rounded-2xl shadow-md border-2 border-teal-600">
                 <QRCodeSVG
-                  value={config.gformUrl || 'https://forms.gle/UQbvWGhwFHSknGkv5'}
+                  value={config.gformUrl || 'https://forms.gle/YQn3NVjU1eaFXZ2f6'}
                   size={200}
                   level="H"
                   includeMargin={true}

@@ -5,6 +5,18 @@ import PDFDocument from 'pdfkit';
 import { DatabaseService, SqliteParam } from '../database/database.service';
 import { CreateMcuDto, UpdateMcuDto } from './mcu.dto';
 
+export interface McuExamItem {
+  id: string;
+  name: string;
+  value: string;
+}
+
+export interface McuExamSection {
+  id: string;
+  title: string;
+  items: McuExamItem[];
+}
+
 export interface McuReportItem {
   id: number;
   reportNumber: string | null;
@@ -20,6 +32,7 @@ export interface McuReportItem {
   physicalExam: string | null;
   labExam: string | null;
   supportingExam: string | null;
+  examinationSections: string | null;
   conclusionType: 'Sehat' | 'Sehat dengan catatan' | 'Temporary Unfit' | 'Unfit';
   conclusionNotes: string | null;
   recommendations: string | null;
@@ -73,7 +86,104 @@ export class McuService {
       queryParams
     );
 
-    return { total, data };
+    const mappedData = data.map((item) => {
+      if (!item.examinationSections) {
+        item.examinationSections = JSON.stringify(this.ensureSections(item));
+      }
+      return item;
+    });
+
+    return { total, data: mappedData };
+  }
+
+  ensureSections(report: McuReportItem): McuExamSection[] {
+    if (report.examinationSections) {
+      try {
+        const parsed = JSON.parse(report.examinationSections);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {
+        // Fallback ke legacy
+      }
+    }
+
+    let vital: Record<string, string> = {};
+    let antropo: Record<string, string> = {};
+    let physical: Record<string, string> = {};
+    let lab: Record<string, string> = {};
+    let supporting: Record<string, string> = {};
+
+    try { if (report.vitalSigns) vital = JSON.parse(report.vitalSigns); } catch {}
+    try { if (report.anthropometry) antropo = JSON.parse(report.anthropometry); } catch {}
+    try { if (report.physicalExam) physical = JSON.parse(report.physicalExam); } catch {}
+    try { if (report.labExam) lab = JSON.parse(report.labExam); } catch {}
+    try { if (report.supportingExam) supporting = JSON.parse(report.supportingExam); } catch {}
+
+    const sections: McuExamSection[] = [];
+
+    // 1. Tanda Vital
+    const vitalItems: McuExamItem[] = [];
+    if (vital.bloodPressure) vitalItems.push({ id: 'vital_bp', name: 'Tekanan Darah', value: vital.bloodPressure });
+    if (vital.pulse) vitalItems.push({ id: 'vital_pulse', name: 'Nadi', value: vital.pulse });
+    if (vital.respiration) vitalItems.push({ id: 'vital_resp', name: 'Pernafasan', value: vital.respiration });
+    if (vital.temperature) vitalItems.push({ id: 'vital_temp', name: 'Suhu', value: vital.temperature });
+    if (vital.consciousness) vitalItems.push({ id: 'vital_cons', name: 'Kesadaran', value: vital.consciousness });
+    if (vitalItems.length > 0) {
+      sections.push({ id: 'sec_vital', title: 'A. TANDA VITAL', items: vitalItems });
+    }
+
+    // 2. Antropometri
+    const antropoItems: McuExamItem[] = [];
+    if (antropo.weight) antropoItems.push({ id: 'antropo_weight', name: 'Berat Badan (BB)', value: antropo.weight.includes('kg') ? antropo.weight : `${antropo.weight} kg` });
+    if (antropo.height) antropoItems.push({ id: 'antropo_height', name: 'Tinggi Badan (TB)', value: antropo.height.includes('cm') ? antropo.height : `${antropo.height} cm` });
+    if (antropo.bmi) antropoItems.push({ id: 'antropo_bmi', name: 'IMT / BMI', value: antropo.bmi });
+    if (antropo.nutritionStatus) antropoItems.push({ id: 'antropo_nutrition', name: 'Status Gizi', value: antropo.nutritionStatus });
+    if (antropoItems.length > 0) {
+      sections.push({ id: 'sec_antropo', title: 'B. ANTROPOMETRI', items: antropoItems });
+    }
+
+    // 3. Fisik
+    const physicalItems: McuExamItem[] = [];
+    if (physical.generalCondition) physicalItems.push({ id: 'phy_gen', name: 'Keadaan Umum', value: physical.generalCondition });
+    if (physical.head) physicalItems.push({ id: 'phy_head', name: 'Kepala', value: physical.head });
+    if (physical.eyes) physicalItems.push({ id: 'phy_eyes', name: 'Mata & Visus', value: physical.eyes });
+    if (physical.colorVision) physicalItems.push({ id: 'phy_color', name: 'Buta Warna', value: physical.colorVision });
+    if (physical.teeth) physicalItems.push({ id: 'phy_teeth', name: 'Gigi & Mulut', value: physical.teeth });
+    if (physical.ent) physicalItems.push({ id: 'phy_ent', name: 'Telinga, Hidung, Tenggorokan', value: physical.ent });
+    if (physical.neck) physicalItems.push({ id: 'phy_neck', name: 'Leher', value: physical.neck });
+    if (physical.heart) physicalItems.push({ id: 'phy_heart', name: 'Jantung', value: physical.heart });
+    if (physical.lungs) physicalItems.push({ id: 'phy_lungs', name: 'Paru paru', value: physical.lungs });
+    if (physical.abdomen) physicalItems.push({ id: 'phy_abdomen', name: 'Abdomen', value: physical.abdomen });
+    if (physical.extremities) physicalItems.push({ id: 'phy_ext', name: 'Ekstremitas Atas dan Bawah', value: physical.extremities });
+    if (physicalItems.length > 0) {
+      sections.push({ id: 'sec_physical', title: 'C. PEMERIKSAAN FISIK', items: physicalItems });
+    }
+
+    // 4. Laboratorium
+    const labItems: McuExamItem[] = [];
+    if (lab.completeBlood) labItems.push({ id: 'lab_blood', name: 'Darah Lengkap', value: lab.completeBlood });
+    if (lab.completeUrine) labItems.push({ id: 'lab_urine', name: 'Urine Lengkap', value: lab.completeUrine });
+    if (lab.bloodChemistry) labItems.push({ id: 'lab_chem', name: 'Kimia Darah', value: lab.bloodChemistry });
+    if (lab.additionalLab) labItems.push({ id: 'lab_add', name: 'Profil Lipid & Fungsi Hati', value: lab.additionalLab });
+    if (lab.hbsag) labItems.push({ id: 'lab_hbsag', name: 'HBsAg', value: lab.hbsag });
+    if (lab.drugTest) labItems.push({ id: 'lab_drug', name: 'Tes NAFZA', value: lab.drugTest });
+    if (labItems.length > 0) {
+      sections.push({ id: 'sec_lab', title: 'D. PEMERIKSAAN LABORATORIUM', items: labItems });
+    }
+
+    // 5. Penunjang
+    const supItems: McuExamItem[] = [];
+    if (supporting.thoraxXray) supItems.push({ id: 'sup_xray', name: 'Rontgen Thorax', value: supporting.thoraxXray });
+    if (supporting.ekg) supItems.push({ id: 'sup_ekg', name: 'EKG', value: supporting.ekg });
+    if (supporting.treadmill) supItems.push({ id: 'sup_treadmill', name: 'Threadmill', value: supporting.treadmill });
+    if (supporting.audiometry) supItems.push({ id: 'sup_audio', name: 'Audiometri', value: supporting.audiometry });
+    if (supporting.spirometry) supItems.push({ id: 'sup_spiro', name: 'Spirometri', value: supporting.spirometry });
+    if (supItems.length > 0) {
+      sections.push({ id: 'sec_sup', title: 'E. PEMERIKSAAN PENUNJANG', items: supItems });
+    }
+
+    return sections;
   }
 
   getById(id: number): McuReportItem {
@@ -81,12 +191,21 @@ export class McuService {
     if (!item) {
       throw new NotFoundException(`Laporan MCU dengan ID ${id} tidak ditemukan.`);
     }
+    if (!item.examinationSections) {
+      item.examinationSections = JSON.stringify(this.ensureSections(item));
+    }
     return item;
   }
 
   create(dto: CreateMcuDto): McuReportItem {
     const now = new Date();
     const reportNumber = `MCU-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(Date.now()).slice(-4)}`;
+
+    const examSectionsStr = Array.isArray(dto.examinationSections)
+      ? JSON.stringify(dto.examinationSections)
+      : typeof dto.examinationSections === 'string'
+      ? dto.examinationSections
+      : null;
 
     const vitalStr = typeof dto.vitalSigns === 'object' ? JSON.stringify(dto.vitalSigns) : dto.vitalSigns || null;
     const antropoStr = typeof dto.anthropometry === 'object' ? JSON.stringify(dto.anthropometry) : dto.anthropometry || null;
@@ -99,9 +218,9 @@ export class McuService {
       `INSERT INTO mcu_reports (
         reportNumber, patientName, nik, ageGender, birthDate, address,
         examDate, purpose, vitalSigns, anthropometry, physicalExam, labExam,
-        supportingExam, conclusionType, conclusionNotes, recommendations,
+        supportingExam, examinationSections, conclusionType, conclusionNotes, recommendations,
         doctorName, doctorSip
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reportNumber,
         dto.patientName.trim(),
@@ -116,6 +235,7 @@ export class McuService {
         physicalStr,
         labStr,
         supportingStr,
+        examSectionsStr,
         dto.conclusionType,
         dto.conclusionNotes ? dto.conclusionNotes.trim() : null,
         recsStr,
@@ -130,6 +250,12 @@ export class McuService {
   update(id: number, dto: UpdateMcuDto): McuReportItem {
     this.getById(id);
 
+    const examSectionsStr = Array.isArray(dto.examinationSections)
+      ? JSON.stringify(dto.examinationSections)
+      : typeof dto.examinationSections === 'string'
+      ? dto.examinationSections
+      : null;
+
     const vitalStr = typeof dto.vitalSigns === 'object' ? JSON.stringify(dto.vitalSigns) : dto.vitalSigns || null;
     const antropoStr = typeof dto.anthropometry === 'object' ? JSON.stringify(dto.anthropometry) : dto.anthropometry || null;
     const physicalStr = typeof dto.physicalExam === 'object' ? JSON.stringify(dto.physicalExam) : dto.physicalExam || null;
@@ -141,7 +267,7 @@ export class McuService {
       `UPDATE mcu_reports SET
         patientName = ?, nik = ?, ageGender = ?, birthDate = ?, address = ?,
         examDate = ?, purpose = ?, vitalSigns = ?, anthropometry = ?, physicalExam = ?,
-        labExam = ?, supportingExam = ?, conclusionType = ?, conclusionNotes = ?,
+        labExam = ?, supportingExam = ?, examinationSections = ?, conclusionType = ?, conclusionNotes = ?,
         recommendations = ?, doctorName = ?, doctorSip = ?, updatedAt = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -157,6 +283,7 @@ export class McuService {
         physicalStr,
         labStr,
         supportingStr,
+        examSectionsStr,
         dto.conclusionType,
         dto.conclusionNotes ? dto.conclusionNotes.trim() : null,
         recsStr,
@@ -234,22 +361,6 @@ export class McuService {
     doc.on('data', (c: Buffer) => buffers.push(c));
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', (err: Error) => reject(err));
-
-    const parseJson = (str: string | null): Record<string, string> => {
-      if (!str) return {};
-      try {
-        return JSON.parse(str);
-      } catch {
-        return {};
-      }
-    };
-
-    const vital = parseJson(report.vitalSigns);
-    const antropo = parseJson(report.anthropometry);
-    const physical = parseJson(report.physicalExam);
-    const lab = parseJson(report.labExam);
-    const supporting = parseJson(report.supportingExam);
-
     let recs: string[] = [];
     if (report.recommendations) {
       try {
@@ -259,7 +370,6 @@ export class McuService {
       }
     }
 
-    // Header gambar proporsional tanpa gepeng
     const drawHeader = () => {
       if (fs.existsSync(this.headerImagePath)) {
         doc.image(this.headerImagePath, leftMargin, 20, { width: printableWidth });
@@ -267,7 +377,15 @@ export class McuService {
       doc.y = 20 + naturalHeaderHeight + 10;
     };
 
-    // Judul dua baris warna biru agak tua center
+    const maxContentY = 745;
+
+    const checkPageBreak = (neededHeight: number) => {
+      if (doc.y + neededHeight > maxContentY) {
+        doc.addPage();
+        drawHeader();
+      }
+    };
+
     const drawTitle = (line1: string, line2: string) => {
       doc.fontSize(12).font(fontArialBold).fillColor('#1e3a8a')
         .text(line1, leftMargin, doc.y, { align: 'center', width: printableWidth });
@@ -275,7 +393,6 @@ export class McuService {
       doc.moveDown(0.5);
     };
 
-    // TABEL HANYA UNTUK IDENTITAS PASIEN (POLOS, JUDUL DI LUAR, TINGGI MENYESUAIKAN TEKS)
     const drawIdTable = (title = 'IDENTITAS PASIEN') => {
       doc.fontSize(11).font(fontArialBold).fillColor('#000000').text(title, leftMargin, doc.y);
       doc.y += 4;
@@ -313,132 +430,50 @@ export class McuService {
       doc.y += 3;
     };
 
-    // POINT-POINT PEMERIKSAAN LAINNYA TIDAK DIBERI TABEL (UKURAN 11 FONT ARIAL)
     const drawPointRow = (label: string, val: string, indent = leftMargin + 8) => {
+      const valStr = `: ${val || '-'}`;
+      const labelW = 155;
+      const valW = printableWidth - labelW - 12;
+      doc.fontSize(11).font(fontArial);
+      const textH = doc.heightOfString(valStr, { width: valW });
+      const rowH = Math.max(16, textH + 3);
+
+      checkPageBreak(rowH);
+
       const y = doc.y;
-      doc.fontSize(11).font(fontArial).fillColor('#334155').text(label, indent, y, { width: 155 });
-      doc.fillColor('#000000').text(`: ${val}`, indent + 160, y, { width: printableWidth - 168 });
-      doc.y = Math.max(doc.y, y + 16);
+      doc.fontSize(11).font(fontArial).fillColor('#334155').text(label, indent, y, { width: labelW });
+      doc.fillColor('#000000').text(valStr, indent + labelW + 4, y, { width: valW });
+      doc.y = y + rowH;
     };
 
-    // ==========================================
-    // HALAMAN 1: RESUME HASIL PEMERIKSAAN MCU
-    // ==========================================
+    // HALAMAN 1: IDENTITAS PASIEN
     doc.addPage();
     drawHeader();
-    drawTitle('RESUME HASIL PEMERIKSAAN', 'MEDICAL CHECK UP (MCU KERJA)');
+    drawTitle('RESUME HASIL PEMERIKSAAN', `MEDICAL CHECK UP (${(report.purpose || 'MCU KERJA').toUpperCase()})`);
     drawIdTable('IDENTITAS PASIEN');
 
-    drawSectionTitle('A. TANDA VITAL');
-    drawPointRow('Tekanan Darah', vital.bloodPressure || 'Normal');
-    drawPointRow('Nadi', vital.pulse || 'Normal');
-    drawPointRow('Pernafasan', vital.respiration || 'Normal');
-    drawPointRow('Suhu', vital.temperature || 'Normal');
-    drawPointRow('Kesadaran', vital.consciousness || 'Compos Mentis');
-    doc.y += 6;
+    // POINT-POINT PEMERIKSAAN FLEKSIBEL
+    const sections = this.ensureSections(report);
+    sections.forEach((sec) => {
+      const validItems = (sec.items || []).filter(
+        (it) => (it.name && it.name.trim() !== '') || (it.value && it.value.trim() !== '')
+      );
+      if (validItems.length === 0) return;
 
-    drawSectionTitle('B. ANTROPOMETRI');
-    drawPointRow('Berat Badan (BB)', antropo.weight ? `${antropo.weight} kg` : '-');
-    drawPointRow('Tinggi Badan (TB)', antropo.height ? `${antropo.height} cm` : '-');
-    drawPointRow('IMT / BMI', antropo.bmi || '-');
-    drawPointRow('Status Gizi', antropo.nutritionStatus || '-');
-    doc.y += 6;
+      checkPageBreak(40);
+      drawSectionTitle(sec.title);
 
-    drawSectionTitle('C. Pemeriksaan Fisik');
-    drawPointRow('Kepala', physical.head || 'Normal');
-    drawPointRow('Gigi', physical.teeth || 'Normal');
-    drawPointRow('Telinga, Hidung, Tenggorokan', physical.ent || 'Normal');
-    drawPointRow('Leher', physical.neck || 'Normal');
-    drawPointRow('Jantung', physical.heart || 'Normal');
-    drawPointRow('Paru paru', physical.lungs || 'Normal');
-    drawPointRow('Abdomen', physical.abdomen || 'Normal');
-    drawPointRow('Ekstremelitas Atas dan Bawah', physical.extremities || 'Normal');
+      validItems.forEach((it) => {
+        drawPointRow(it.name, it.value);
+      });
 
-    // ==========================================
-    // HALAMAN 2: PEMERIKSAAN LAB & PENUNJANG
-    // ==========================================
-    doc.addPage();
-    drawHeader();
+      doc.y += 6;
+    });
 
-    drawSectionTitle('D. Pemeriksaan Laboratorium');
-    drawPointRow('Darah Lengkap', lab.completeBlood || 'Dalam batas normal');
-    drawPointRow('Urine Lengkap', lab.completeUrine || 'Dalam batas normal');
-    drawPointRow('GDP, Kolestrol Total, LDL, Kreatinin, Ureum, Asam Urat', lab.bloodChemistry || 'Dalam batas normal');
-    drawPointRow('TG, HDL, SGOT, SGPT', lab.additionalLab || 'Dalam batas normal');
-    drawPointRow('HBsAg', lab.hbsag || 'Negatif');
-    drawPointRow('Tes NAFZA (6 Parameter)', lab.drugTest || 'Negatif');
-    doc.y += 10;
+    // KESIMPULAN, SARAN & TTD DOKTER
+    checkPageBreak(210);
 
-    drawSectionTitle('E. Pemeriksaan Rontgen Thorax');
-    drawPointRow('Gambaran Rontgen', supporting.thoraxXray || 'Cor dan Pulmo dalam batas normal, tidak tampak kelainan aktif.');
-    doc.y += 10;
-
-    drawSectionTitle('F. Pemeriksaan EKG');
-    drawPointRow('Hasil EKG', supporting.ekg || 'Hasil terlampir');
-    doc.y += 6;
-
-    drawSectionTitle('G. Pemeriksaan Threadmill');
-    drawPointRow('Hasil Threadmill', supporting.treadmill || 'Normal');
-    doc.y += 6;
-
-    drawSectionTitle('H. Pemeriksaan Audiometri');
-    drawPointRow('Hasil Audiometri', supporting.audiometry || 'Dalam batas normal');
-    doc.y += 6;
-
-    drawSectionTitle('I. Pemeriksaan Spirometri');
-    drawPointRow('Hasil Spirometri', supporting.spirometry || 'Normal');
-
-    // ==========================================
-    // HALAMAN 3: HASIL PEMERIKSAAN FISIK
-    // ==========================================
-    doc.addPage();
-    drawHeader();
-    drawTitle('HASIL PEMERIKSAAN FISIK', 'MEDICAL CHECK UP (MCU KERJA)');
-    drawIdTable('IDENTITAS');
-
-    drawSectionTitle('Pemeriksaan Tanda Vital');
-    drawPointRow('Tekanan Darah', vital.bloodPressure || '120/80 mmHg');
-    drawPointRow('Nadi', vital.pulse || '80 x/menit');
-    drawPointRow('Pernafasan', vital.respiration || '18 x/menit');
-    drawPointRow('Suhu', vital.temperature || '36.5 °C');
-    drawPointRow('Berat Badan (BB)', antropo.weight ? `${antropo.weight} Kg` : '-');
-    drawPointRow('Tinggi Badan (TB)', antropo.height ? `${antropo.height} cm` : '-');
-    drawPointRow('IMT / BMI', antropo.bmi || '-');
-    doc.y += 6;
-
-    drawSectionTitle('Pemeriksaan Fisik Umum');
-    drawPointRow('Keadaan Umum', physical.generalCondition || 'Baik');
-    drawPointRow('Kesadaran', vital.consciousness || 'Compos mentis');
-    doc.y += 6;
-
-    drawSectionTitle('Pemeriksaan Kepala dan Leher');
-    drawPointRow('Mata & Visus', physical.eyes || 'Visus OD 20/20, OS 20/20');
-    drawPointRow('Buta Warna', physical.colorVision || 'Tidak Buta warna');
-    drawPointRow('Telinga', physical.ent || 'Tidak ada sekret');
-    drawPointRow('Hidung', physical.head || 'Tidak ada sekret');
-    drawPointRow('Leher', physical.neck || 'Tidak ada pembesaran kelenjar');
-    doc.y += 6;
-
-    drawSectionTitle('Pemeriksaan Thorax');
-    drawPointRow('Paru - paru', physical.lungs || 'Suara nafas vesikuler, tidak ada ronkhi/wheezing');
-    drawPointRow('Jantung', physical.heart || 'Bunyi jantung reguler, tidak ada murmur');
-
-    // ==========================================
-    // HALAMAN 4: ABDOMEN, EKSTREMITAS, KESIMPULAN & SARAN
-    // ==========================================
-    doc.addPage();
-    drawHeader();
-
-    drawSectionTitle('Pemeriksaan Abdomen');
-    drawPointRow('Inspeksi dan Palpasi', physical.abdomen || 'Lunak, tidak ada nyeri tekan');
-    drawPointRow('Hepar dan Lien', 'Tidak teraba');
-    doc.y += 8;
-
-    drawSectionTitle('Pemeriksaan Extremitas');
-    drawPointRow('Atas dan Bawah', physical.extremities || 'Tidak ada edema, kekuatan otot baik');
-    doc.y += 12;
-
-    drawSectionTitle('Kesimpulan');
+    drawSectionTitle('KESIMPULAN');
     doc.y += 2;
 
     const drawCheckbox = (label: string, isChecked: boolean, textVal: string) => {
@@ -479,9 +514,12 @@ export class McuService {
 
     if (recs.length > 0) {
       recs.forEach((s) => {
+        const textH = doc.heightOfString(`• ${s}`, { width: printableWidth - 12 });
+        const rowH = Math.max(16, textH + 2);
+        checkPageBreak(rowH);
         const y = doc.y;
         doc.fontSize(11).font(fontArial).fillColor('#000000').text(`• ${s}`, leftMargin + 8, y, { width: printableWidth - 12 });
-        doc.y = Math.max(doc.y, y + 16);
+        doc.y = y + rowH;
       });
     } else {
       doc.fontSize(11).font(fontArial).fillColor('#000000').text('• Pertahankan pola hidup sehat dan olahraga teratur.', leftMargin + 8, doc.y);
@@ -489,13 +527,14 @@ export class McuService {
     }
 
     doc.y += 10;
-    // TANDA TANGAN DOKTER
+    checkPageBreak(85);
     const signY = doc.y + 6;
     doc.fontSize(11).font(fontArial).fillColor('#000000').text('Dokter Pemeriksa,', leftMargin + printableWidth - 180, signY, { align: 'center', width: 180 });
-    doc.fontSize(11).font(fontArialBold).fillColor('#000000').text(report.doctorName || 'dr. Arinda Puteri P', leftMargin + printableWidth - 180, signY + 60, { align: 'center', width: 180, underline: true });
-    doc.fontSize(10).font(fontArial).fillColor('#000000').text(report.doctorSip || 'SIP.MR32032507002898', leftMargin + printableWidth - 180, signY + 75, { align: 'center', width: 180 });
+    doc.fontSize(11).font(fontArialBold).fillColor('#000000').text(report.doctorName || 'dr. Arinda Puteri P', leftMargin + printableWidth - 180, signY + 50, { align: 'center', width: 180, underline: true });
+    doc.fontSize(10).font(fontArial).fillColor('#000000').text(report.doctorSip || 'SIP.MR32032507002898', leftMargin + printableWidth - 180, signY + 65, { align: 'center', width: 180 });
+    doc.y = signY + 80;
 
-    // FOOTER PAGE NUMBER CENTER DALAM FONT CAMBRIA
+    // FOOTER PAGE NUMBER CENTER DALAM FONT CAMBRIA: Page X of Y
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i++) {
       doc.switchToPage(i);
