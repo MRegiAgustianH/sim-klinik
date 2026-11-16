@@ -30,7 +30,7 @@ export default function ConfirmModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-900 transition-opacity"
         onClick={onCancel}
       />
 
@@ -77,7 +77,7 @@ export default function ConfirmModal({
             className={`px-4 py-2 rounded-lg text-white text-xs font-bold shadow-xs transition-colors cursor-pointer ${
               isDanger
                 ? 'bg-rose-600 hover:bg-rose-700 focus:ring-2 focus:ring-rose-500'
-                : 'bg-teal-700 hover:bg-teal-800 focus:ring-2 focus:ring-teal-600'
+                : 'bg-teal-600 hover:bg-teal-700 focus:ring-2 focus:ring-teal-600'
             }`}
           >
             {confirmText}

@@ -966,7 +966,7 @@ export default function McuPage() {
               <button
                 type="button"
                 onClick={handleOpenNew}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Buat Laporan MCU Baru</span>
@@ -1017,7 +1017,7 @@ export default function McuPage() {
                   </tr>
                 ) : reports.length > 0 ? (
                   reports.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-teal-800 whitespace-nowrap">
                         {r.reportNumber || `#MCU-${r.id}`}
                       </td>
@@ -1091,10 +1091,10 @@ export default function McuPage() {
         {/* ============================================================ */}
         {isEditorOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
-            <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs" onClick={() => setIsEditorOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsEditorOpen(false)} />
             <div className="relative bg-slate-100 rounded-2xl shadow-2xl border border-slate-300 w-full max-w-7xl h-[95vh] flex flex-col z-10 overflow-hidden">
               {/* Header Modal */}
-              <div className="p-3 sm:p-4 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="p-3 sm:p-4 border-b border-teal-700 bg-teal-600 text-white flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-teal-600 flex items-center justify-center">
                     <Stethoscope className="w-4 h-4 text-white" />
@@ -1103,7 +1103,7 @@ export default function McuPage() {
                     <h2 className="text-sm sm:text-base font-bold text-white">
                       {isEditing ? `Edit Laporan MCU: ${formData.patientName}` : 'Formulir Laporan Medical Check Up (MCU)'}
                     </h2>
-                    <p className="text-[11px] text-slate-300">
+                    <p className="text-[11px] text-teal-50">
                       Poin pemeriksaan fleksibel: hapus jika tidak dilakukan, tambah pemeriksaan lain sesuka kebutuhan.
                     </p>
                   </div>
@@ -1132,7 +1132,7 @@ export default function McuPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditorOpen(false)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                    className="p-1.5 rounded-lg text-white hover:bg-teal-700"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1360,7 +1360,7 @@ export default function McuPage() {
                             <button
                               type="button"
                               onClick={() => setIsAddingCategory(true)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs transition-colors cursor-pointer"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               <span>Tambah Kategori Baru</span>
@@ -1370,7 +1370,7 @@ export default function McuPage() {
 
                         {/* Modal Tambah Kategori Baru */}
                         {isAddingCategory && (
-                          <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl space-y-2">
+                          <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl space-y-2">
                             <label className="block font-semibold text-teal-900">Nama Kategori / Bagian Pemeriksaan Baru:</label>
                             <div className="flex gap-2">
                               <input
@@ -1386,7 +1386,7 @@ export default function McuPage() {
                               <button
                                 type="button"
                                 onClick={handleAddSection}
-                                className="px-3 py-1.5 bg-teal-700 text-white font-bold rounded-lg text-xs hover:bg-teal-800"
+                                className="px-3 py-1.5 bg-teal-600 text-white font-bold rounded-lg text-xs hover:bg-teal-700"
                               >
                                 Tambah
                               </button>
@@ -1411,7 +1411,7 @@ export default function McuPage() {
                             className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
                           >
                             {/* Section Header */}
-                            <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
+                            <div className="bg-slate-100 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <input
                                   type="text"
@@ -1432,7 +1432,7 @@ export default function McuPage() {
                                   aria-pressed={!!sec.pageBreakBefore}
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
                                     sec.pageBreakBefore
-                                      ? 'bg-teal-700 border-teal-700 text-white'
+                                      ? 'bg-teal-600 border-teal-600 text-white'
                                       : 'bg-white border-slate-300 text-slate-600 hover:border-teal-400 hover:text-teal-800'
                                   }`}
                                   title="Cetak kategori ini mulai di halaman baru"
@@ -1504,7 +1504,7 @@ export default function McuPage() {
                                     key={item.id}
                                     className={`flex items-start gap-2 p-1.5 rounded-lg border ${
                                       item.pageBreakBefore
-                                        ? 'border-teal-300 bg-teal-50/40'
+                                        ? 'border-teal-300 bg-teal-50'
                                         : 'border-slate-100 hover:bg-slate-50'
                                     }`}
                                   >
@@ -1564,7 +1564,7 @@ export default function McuPage() {
                                       aria-pressed={!!item.pageBreakBefore}
                                       className={`shrink-0 mt-0.5 p-1 rounded transition-colors cursor-pointer ${
                                         item.pageBreakBefore
-                                          ? 'bg-teal-700 text-white'
+                                          ? 'bg-teal-600 text-white'
                                           : 'text-slate-400 hover:text-teal-800 hover:bg-teal-50'
                                       }`}
                                       title={
@@ -1665,12 +1665,12 @@ export default function McuPage() {
                                 : 'Alasan tidak layak bekerja (unfit)...';
                             const accentBorder =
                               option === 'Fit'
-                                ? 'border-emerald-400 bg-emerald-50/50'
+                                ? 'border-emerald-400 bg-emerald-50'
                                 : option === 'Fit dengan catatan'
-                                ? 'border-amber-400 bg-amber-50/50'
+                                ? 'border-amber-400 bg-amber-50'
                                 : option === 'Temporary unfit'
-                                ? 'border-orange-400 bg-orange-50/50'
-                                : 'border-rose-400 bg-rose-50/50';
+                                ? 'border-orange-400 bg-orange-50'
+                                : 'border-rose-400 bg-rose-50';
                             const accentText =
                               option === 'Fit'
                                 ? 'text-emerald-600 focus:ring-emerald-500'
@@ -1761,7 +1761,7 @@ export default function McuPage() {
                 </div>
 
                 {/* PANEL KANAN: LIVE DYNAMIC MULTI-PAGE DOCUMENT PREVIEW */}
-                <div className="w-full lg:w-1/2 flex flex-col bg-slate-300/80 overflow-y-auto p-3 sm:p-5">
+                <div className="w-full lg:w-1/2 flex flex-col bg-slate-300 overflow-y-auto p-3 sm:p-5">
                   {/* Page Navigator Toolbar */}
                   <div className="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-300 shadow-xs mb-4 text-xs shrink-0">
                     <span className="font-bold text-slate-700">
@@ -1773,7 +1773,7 @@ export default function McuPage() {
                         onClick={() => setActivePreviewPage('all')}
                         className={`px-2.5 py-1 rounded font-semibold transition-colors cursor-pointer ${
                           activePreviewPage === 'all'
-                            ? 'bg-teal-700 text-white'
+                            ? 'bg-teal-600 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
@@ -1786,7 +1786,7 @@ export default function McuPage() {
                           onClick={() => setActivePreviewPage(page.pageNumber)}
                           className={`px-2.5 py-1 rounded font-semibold transition-colors cursor-pointer ${
                             activePreviewPage === page.pageNumber
-                              ? 'bg-teal-700 text-white'
+                              ? 'bg-teal-600 text-white'
                               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                           }`}
                         >

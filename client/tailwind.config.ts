@@ -1,5 +1,22 @@
 import type { Config } from "tailwindcss";
 
+// Palet merek SIMKlinik. Warna dasar #01B9AD.
+// 600 = warna utama (tombol, menu aktif), 700+ dipakai untuk teks agar kontras
+// di atas latar putih tetap terbaca.
+const BRAND = {
+  50: '#E7FBFA',
+  100: '#C3F5F2',
+  200: '#8CEBE6',
+  300: '#4FDED7',
+  400: '#19CCC2',
+  500: '#01B9AD',
+  600: '#01B9AD',
+  700: '#01857C',
+  800: '#016A63',
+  900: '#01534E',
+  950: '#00322F',
+};
+
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,19 +26,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        hospital: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4',
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
-          950: '#042f2e',
-        },
+        // Seluruh kelas teal-* di aplikasi kini memakai warna merek.
+        teal: BRAND,
+        hospital: BRAND,
       },
     },
   },

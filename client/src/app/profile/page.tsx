@@ -172,7 +172,7 @@ export default function ProfilePage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
+                className="px-5 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
               >
                 {isSubmitting ? 'Memperbarui...' : 'Simpan Password Baru'}
               </button>

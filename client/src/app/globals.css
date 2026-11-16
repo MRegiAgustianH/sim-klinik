@@ -25,6 +25,12 @@
   background: #94a3b8;
 }
 
+/* Fokus keyboard memakai warna merek agar konsisten di seluruh formulir */
+:focus-visible {
+  outline: 2px solid #01B9AD;
+  outline-offset: 1px;
+}
+
 /* Print styling */
 @media print {
   body {

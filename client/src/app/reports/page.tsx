@@ -279,7 +279,7 @@ export default function ReportsPage() {
               <button
                 onClick={handleExportPdf}
                 disabled={isExportingPdf}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-teal-800 hover:bg-teal-900 text-white font-bold text-xs shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
               >
                 <Download className={`w-4 h-4 ${isExportingPdf ? 'animate-bounce' : ''}`} />
                 <span>{isExportingPdf ? 'Menyusun Dokumen PDF...' : `Unduh PDF Rekapitulasi - Periode ${selectedMonth}`}</span>

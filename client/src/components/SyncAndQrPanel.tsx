@@ -141,7 +141,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
           {/* Kolom QR Code Preview */}
           <div className="flex items-center gap-4 shrink-0">
-            <div className="p-2.5 rounded-xl border-2 border-teal-600/30 bg-white shadow-xs">
+            <div className="p-2.5 rounded-xl border-2 border-teal-600 bg-white shadow-xs">
               <QRCodeSVG
                 value={config.gformUrl || 'https://forms.gle/YQn3NVjU1eaFXZ2f6'}
                 size={88}
@@ -160,7 +160,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
                 <button
                   type="button"
                   onClick={() => setIsPosterModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100/80 px-2.5 py-1 rounded-md border border-teal-200 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-md border border-teal-200 transition-colors cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Cetak Poster Ruang Tunggu</span>
@@ -206,7 +206,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
                 type="button"
                 onClick={handleManualSync}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                 <span>{loading ? 'Menarik Data...' : 'Tarik Data GForm'}</span>
@@ -233,7 +233,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
       {/* ============================================================ */}
       {isPosterModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsPosterModalOpen(false)} />
+          <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsPosterModalOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 z-10 flex flex-col max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
               <h3 className="text-sm font-bold text-slate-900">Poster QR Code Ruang Tunggu</h3>
@@ -243,7 +243,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
             </div>
 
             {/* Poster Content (Printable Area) */}
-            <div id="poster-print-area" className="p-6 text-center border-2 border-dashed border-teal-600/40 rounded-xl bg-teal-50/20 my-4 space-y-4">
+            <div id="poster-print-area" className="p-6 text-center border-2 border-dashed border-teal-600 rounded-xl bg-teal-50 my-4 space-y-4">
               <div className="inline-flex p-2 rounded-xl bg-teal-600 text-white shadow-xs">
                 <Syringe className="w-6 h-6" />
               </div>
@@ -311,7 +311,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Cetak Poster</span>
@@ -327,7 +327,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
       {/* ============================================================ */}
       {isConfigModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsConfigModalOpen(false)} />
+          <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsConfigModalOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 z-10 flex flex-col space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
@@ -441,7 +441,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold cursor-pointer"
+                  className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer"
                 >
                   Simpan Pengaturan
                 </button>

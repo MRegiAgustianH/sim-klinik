@@ -302,7 +302,7 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-slate-100">
                 {data?.today.patientsList && data.today.patientsList.length > 0 ? (
                   data.today.patientsList.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono font-medium text-slate-600 whitespace-nowrap">
                         {p.plannedTime}
                       </td>
@@ -464,7 +464,7 @@ export default function DashboardPage() {
 
               {/* Stat Chips WUS */}
               <div className="grid grid-cols-3 gap-2.5 mt-4">
-                <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/70 text-center">
+                <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-center">
                   <p className="text-[11px] font-semibold uppercase text-emerald-800">Negatif (Aman)</p>
                   <p className="text-xl font-bold text-emerald-900 mt-0.5">
                     {data?.pregnancyTestSummary.negative ?? 0}
@@ -472,7 +472,7 @@ export default function DashboardPage() {
                   <p className="text-[10px] text-emerald-700">Dapat divaksinasi</p>
                 </div>
 
-                <div className="p-3 rounded-lg border border-rose-200 bg-rose-50/70 text-center">
+                <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-center">
                   <p className="text-[11px] font-semibold uppercase text-rose-800">Positif (Hamil)</p>
                   <p className="text-xl font-bold text-rose-900 mt-0.5">
                     {data?.pregnancyTestSummary.positive ?? 0}
@@ -542,7 +542,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             {/* Box Alert Stok Vaksin */}
-            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/60">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                 Vaksin Perlu Perhatian (Menipis / Kadaluarsa)
@@ -585,7 +585,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Box Ringkasan Buku Kuning ICV */}
-            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50 flex flex-col justify-between">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-teal-700" />

@@ -394,7 +394,7 @@ export default function PatientsPage() {
                   setFormData(initialFormState);
                   setIsAddModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Registrasi Pasien Baru</span>
@@ -523,7 +523,7 @@ export default function PatientsPage() {
                   </tr>
                 ) : patients.length > 0 ? (
                   patients.map((p, idx) => (
-                    <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-3.5 text-center text-slate-500 font-mono">
                         {idx + 1}
                       </td>
@@ -712,9 +712,9 @@ export default function PatientsPage() {
         {/* ============================================================ */}
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsAddModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsAddModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col z-10 overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-teal-800 text-white">
+              <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-teal-600 text-white">
                 <div>
                   <h2 className="text-base font-bold">
                     {isEditing ? 'Ubah Data Pasien & Rekam Vaksinasi' : 'Registrasi Pasien Baru & Rencana Vaksinasi'}
@@ -725,7 +725,7 @@ export default function PatientsPage() {
                 </div>
                 <button
                   onClick={() => setIsAddModalOpen(false)}
-                  className="p-1.5 rounded-lg text-teal-200 hover:text-white hover:bg-teal-700/60"
+                  className="p-1.5 rounded-lg text-white hover:bg-teal-700"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1122,7 +1122,7 @@ export default function PatientsPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold shadow-xs cursor-pointer"
+                    className="px-5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold shadow-xs cursor-pointer"
                   >
                     {isEditing ? 'Perbarui Data Pasien' : 'Simpan Data Pasien'}
                   </button>
@@ -1137,21 +1137,21 @@ export default function PatientsPage() {
         {/* ============================================================ */}
         {isDetailModalOpen && selectedPatient && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsDetailModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsDetailModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col z-10 overflow-hidden">
-              <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+              <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-teal-600 text-white">
                 <div>
                   <h2 className="text-base font-bold flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-teal-400" />
+                    <Eye className="w-4 h-4 text-white" />
                     Detail Lengkap Pasien & Rekam Vaksinasi
                   </h2>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-teal-50">
                     ID Pasien: #{selectedPatient.id} | Bulan Laporan: {selectedPatient.monthYear}
                   </p>
                 </div>
                 <button
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="p-1.5 rounded-lg text-white hover:bg-teal-700"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1182,7 +1182,7 @@ export default function PatientsPage() {
                 </div>
 
                 {/* Data Pasien Grid */}
-                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
                   <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-teal-800">
                     Identitas Demografi
                   </h4>
@@ -1227,7 +1227,7 @@ export default function PatientsPage() {
                 </div>
 
                 {/* Rekam Medis & Tindakan */}
-                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
                   <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-teal-800">
                     Rekam Vaksinasi & Telaah Dokter
                   </h4>
@@ -1276,7 +1276,7 @@ export default function PatientsPage() {
                 <button
                   type="button"
                   onClick={() => handleDownloadPdf(selectedPatient.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold text-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold text-xs cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Cetak Kartu Vaksinasi Resmi (PDF)</span>
@@ -1299,7 +1299,7 @@ export default function PatientsPage() {
         {/* ============================================================ */}
         {isApprovalModalOpen && selectedPatient && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsApprovalModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsApprovalModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg flex flex-col z-10 overflow-hidden">
               <div className="p-4 sm:p-5 border-b border-slate-200 bg-blue-900 text-white flex items-center justify-between">
                 <div>
@@ -1408,7 +1408,7 @@ export default function PatientsPage() {
         {/* ============================================================ */}
         {isCompleteModalOpen && selectedPatient && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onClick={() => setIsCompleteModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsCompleteModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg flex flex-col z-10 overflow-hidden">
               <div className="p-4 sm:p-5 border-b border-slate-200 bg-emerald-900 text-white flex items-center justify-between">
                 <div>

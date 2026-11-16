@@ -35,19 +35,19 @@ export default function LoginPage() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-teal-950 flex flex-col justify-center items-center px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-teal-700 flex flex-col justify-center items-center px-4 py-8 sm:px-6 lg:px-8">
       {/* Brand Header */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-600 text-white shadow-lg shadow-teal-900/50 mb-3">
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white text-teal-600 shadow-lg mb-3">
           <Syringe className="w-8 h-8" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
           SIMKlinik Rotinsulu
         </h1>
-        <p className="mt-1 text-sm text-teal-200/90 font-medium">
+        <p className="mt-1 text-sm text-white font-medium">
           Klinik Utama Dr. H. A. Rotinsulu Cianjur
         </p>
-        <p className="text-xs text-teal-300/70 mt-0.5">
+        <p className="text-xs text-teal-100 mt-0.5">
           Sistem Informasi Manajemen Pelayanan Klinik (Vaksinasi, ICV, MCU & Rekam Medis)
         </p>
       </div>
@@ -112,7 +112,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-600 transition-colors disabled:opacity-60 cursor-pointer"
+              className="w-full mt-2 flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-600 transition-colors disabled:opacity-60 cursor-pointer"
             >
               {isLoading ? 'Memverifikasi...' : 'Masuk Sistem'}
             </button>

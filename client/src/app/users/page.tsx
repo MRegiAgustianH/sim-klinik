@@ -201,7 +201,7 @@ export default function UsersPage() {
 
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Tambah Pengguna Baru</span>
@@ -232,7 +232,7 @@ export default function UsersPage() {
                   </tr>
                 ) : users.length > 0 ? (
                   users.map((u, idx) => (
-                    <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono text-slate-500">{idx + 1}</td>
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">@{u.username}</td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{u.fullName}</td>
@@ -288,7 +288,7 @@ export default function UsersPage() {
         {/* Modal Form Tambah / Ubah */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60" onClick={() => setIsModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 z-10 space-y-4 text-xs">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-sm font-bold text-slate-900">
@@ -382,7 +382,7 @@ export default function UsersPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold cursor-pointer"
+                    className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer"
                   >
                     {isEditing ? 'Simpan Perubahan' : 'Daftarkan Pengguna'}
                   </button>

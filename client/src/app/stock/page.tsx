@@ -271,7 +271,7 @@ export default function StockPage() {
                 {activeTab === 'vaccines' && (
                   <button
                     onClick={() => setIsAddVaccineModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Tambah Stok Vaksin</span>
@@ -280,7 +280,7 @@ export default function StockPage() {
                 {activeTab === 'icv' && (
                   <button
                     onClick={() => setIsAddIcvModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Penerimaan Buku ICV</span>
@@ -289,7 +289,7 @@ export default function StockPage() {
                 {activeTab === 'mutations' && (
                   <button
                     onClick={() => setIsAddMutationModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Catat Mutasi Manual</span>
@@ -306,7 +306,7 @@ export default function StockPage() {
             onClick={() => setActiveTab('vaccines')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
               activeTab === 'vaccines'
-                ? 'border-teal-700 text-teal-800 bg-teal-50/50'
+                ? 'border-teal-700 text-teal-800 bg-teal-50'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -318,7 +318,7 @@ export default function StockPage() {
             onClick={() => setActiveTab('icv')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
               activeTab === 'icv'
-                ? 'border-teal-700 text-teal-800 bg-teal-50/50'
+                ? 'border-teal-700 text-teal-800 bg-teal-50'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -330,7 +330,7 @@ export default function StockPage() {
             onClick={() => setActiveTab('mutations')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
               activeTab === 'mutations'
-                ? 'border-teal-700 text-teal-800 bg-teal-50/50'
+                ? 'border-teal-700 text-teal-800 bg-teal-50'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -382,7 +382,7 @@ export default function StockPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredVaccines.length > 0 ? (
                       filteredVaccines.map((v, idx) => (
-                        <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-3 px-4 font-mono text-slate-500">{idx + 1}</td>
                           <td className="py-3 px-4 font-bold text-slate-900">{v.vaccineName}</td>
                           <td className="py-3 px-4 text-slate-600">{v.manufacturer || '-'}</td>
@@ -488,7 +488,7 @@ export default function StockPage() {
                   <tbody className="divide-y divide-slate-100">
                     {icvData.batches.length > 0 ? (
                       icvData.batches.map((b, idx) => (
-                        <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr key={b.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-3 px-4 font-mono text-slate-500">{idx + 1}</td>
                           <td className="py-3 px-4 font-bold font-mono text-slate-900">{b.batchCode}</td>
                           <td className="py-3 px-4 font-mono text-teal-800">
@@ -544,7 +544,7 @@ export default function StockPage() {
                 <tbody className="divide-y divide-slate-100">
                   {mutations.length > 0 ? (
                     mutations.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
                           {m.createdAt.replace('T', ' ').substring(0, 19)}
                         </td>
@@ -599,7 +599,7 @@ export default function StockPage() {
         {/* ============================================================ */}
         {isAddVaccineModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60" onClick={() => setIsAddVaccineModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsAddVaccineModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 z-10 space-y-4 text-xs">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-sm font-bold text-slate-900">Tambah Master Stok Vaksin Baru</h3>
@@ -690,7 +690,7 @@ export default function StockPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold"
+                    className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                   >
                     Simpan Stok Vaksin
                   </button>
@@ -705,7 +705,7 @@ export default function StockPage() {
         {/* ============================================================ */}
         {isAddIcvModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60" onClick={() => setIsAddIcvModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsAddIcvModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 z-10 space-y-4 text-xs">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-sm font-bold text-slate-900">Catat Penerimaan Buku Kuning (ICV)</h3>
@@ -796,7 +796,7 @@ export default function StockPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold"
+                    className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                   >
                     Simpan Penerimaan ICV
                   </button>
@@ -811,7 +811,7 @@ export default function StockPage() {
         {/* ============================================================ */}
         {isAddMutationModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900/60" onClick={() => setIsAddMutationModalOpen(false)} />
+            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsAddMutationModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 z-10 space-y-4 text-xs">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-sm font-bold text-slate-900">Catat Penyesuaian / Mutasi Manual</h3>
@@ -899,7 +899,7 @@ export default function StockPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-semibold"
+                    className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-semibold"
                   >
                     Simpan Mutasi
                   </button>
