@@ -46,8 +46,9 @@ if exist "server\data\vaksinku.sqlite" (
 )
 
 echo.
-echo [3/5] Build backend...
+echo [3/5] Build backend (bersih, tanpa cache incremental)...
 cd /d "%~dp0server"
+if exist "dist" rmdir /S /Q "dist"
 call npm run build
 if errorlevel 1 (
   echo.

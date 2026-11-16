@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Build production selalu penuh: cache incremental pernah membuat output
+    // tidak lengkap (mcu-template.js terlewat) dan backend gagal start.
+    "incremental": false,
+    // Dikunci agar output selalu dist/<modul>/, tidak bergeser ke dist/src/.
+    "rootDir": "./src"
+  },
   "exclude": ["node_modules", "test", "dist", "dist-dev", "**/*spec.ts", "test-*.ts"]
 }

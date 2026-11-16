@@ -28,6 +28,7 @@ echo       [OK] Tidak ada error TypeScript backend.
 echo.
 
 echo [2/4] Build backend ke folder dist-dev (dist production tidak disentuh)...
+if exist "dist-dev" rmdir /S /Q "dist-dev"
 call node_modules\.bin\tsc.cmd -p tsconfig.dev.json
 if errorlevel 1 (
   echo [GAGAL] Build backend gagal.

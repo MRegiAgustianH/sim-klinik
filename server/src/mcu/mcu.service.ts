@@ -21,6 +21,30 @@ export interface McuExamSection {
   pageBreakBefore?: boolean;
 }
 
+const MONTHS_ID = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
+// Tanggal lahir disimpan ISO (YYYY-MM-DD) agar input type="date" bisa memakainya.
+// Pada PDF tetap ditampilkan dalam format Indonesia.
+function formatBirthDateId(value: string | null): string {
+  if (!value) return '-';
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value; // teks lama dibiarkan apa adanya
+  return `${Number(match[3])} ${MONTHS_ID[Number(match[2]) - 1] || match[2]} ${match[1]}`;
+}
+
 export interface McuReportItem {
   id: number;
   reportNumber: string | null;
@@ -476,7 +500,7 @@ export class McuService {
       const idRows = [
         ['Nama', report.patientName, true],
         ['Umur / Jenis Kelamin', report.ageGender, false],
-        ['Tanggal Lahir', report.birthDate || '-', false],
+        ['Tanggal Lahir', formatBirthDateId(report.birthDate), false],
         ['Alamat', report.address || '-', false],
         ['Tanggal Pemeriksaan', report.examDate, false],
         ['Keperluan', report.purpose || 'MCU kerja', false],

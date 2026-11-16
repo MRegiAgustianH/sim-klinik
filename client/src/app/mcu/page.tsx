@@ -61,6 +61,75 @@ const CONCLUSION_LABELS: Record<ConclusionType, string> = {
   Unfit: 'Unfit',
 };
 
+const MONTHS_ID = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
+const GENDERS = ['Laki-laki', 'Perempuan'] as const;
+type Gender = (typeof GENDERS)[number];
+
+const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+// Tanggal lahir lama tersimpan sebagai teks bebas ("20 Juni 1977", "20/06/1977").
+// Diubah ke ISO agar bisa ditampilkan pada input type="date".
+const parseBirthDate = (value?: string | null): string => {
+  const raw = (value || '').trim();
+  if (!raw) return '';
+  if (isIsoDate(raw)) return raw;
+
+  const numeric = raw.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (numeric) {
+    const [, d, m, y] = numeric;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  const named = raw.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (named) {
+    const word = named[2].toLowerCase();
+    const monthIdx = MONTHS_ID.findIndex(
+      (mo) => mo.toLowerCase() === word || mo.slice(0, 3).toLowerCase() === word.slice(0, 3)
+    );
+    if (monthIdx >= 0) {
+      return `${named[3]}-${String(monthIdx + 1).padStart(2, '0')}-${named[1].padStart(2, '0')}`;
+    }
+  }
+  return '';
+};
+
+// Umur penuh (tahun) pada tanggal pemeriksaan
+const calculateAge = (birthIso: string, referenceIso?: string): number | null => {
+  if (!isIsoDate(birthIso)) return null;
+  const birth = new Date(`${birthIso}T00:00:00`);
+  const reference = referenceIso && isIsoDate(referenceIso) ? new Date(`${referenceIso}T00:00:00`) : new Date();
+  if (Number.isNaN(birth.getTime()) || Number.isNaN(reference.getTime()) || birth > reference) return null;
+
+  let age = reference.getFullYear() - birth.getFullYear();
+  const monthDiff = reference.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && reference.getDate() < birth.getDate())) age--;
+  return age;
+};
+
+const formatDateId = (value?: string | null): string => {
+  if (!value) return '-';
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value; // teks lama dibiarkan apa adanya
+  return `${Number(match[3])} ${MONTHS_ID[Number(match[2]) - 1] || match[2]} ${match[1]}`;
+};
+
+const parseGender = (ageGender?: string | null): Gender =>
+  (ageGender || '').toLowerCase().includes('perempuan') ? 'Perempuan' : 'Laki-laki';
+
 interface McuReportItem {
   id: number;
   reportNumber: string | null;
@@ -297,7 +366,7 @@ export default function McuPage() {
   const [formData, setFormData] = useState({
     patientName: '',
     nik: '',
-    ageGender: '35 Tahun / Laki-Laki',
+    gender: 'Laki-laki' as Gender,
     birthDate: '',
     address: 'Cianjur, Jawa Barat',
     examDate: new Date().toISOString().split('T')[0],
@@ -346,7 +415,7 @@ export default function McuPage() {
     setFormData({
       patientName: '',
       nik: '',
-      ageGender: '35 Tahun / Laki-Laki',
+      gender: 'Laki-laki',
       birthDate: '',
       address: 'Cianjur, Jawa Barat',
       examDate: new Date().toISOString().split('T')[0],
@@ -383,8 +452,8 @@ export default function McuPage() {
     setFormData({
       patientName: r.patientName,
       nik: r.nik || '',
-      ageGender: r.ageGender,
-      birthDate: r.birthDate || '',
+      gender: parseGender(r.ageGender),
+      birthDate: parseBirthDate(r.birthDate),
       address: r.address || '',
       examDate: r.examDate,
       purpose: r.purpose || 'MCU Kerja',
@@ -613,6 +682,11 @@ export default function McuPage() {
       return;
     }
 
+    if (!formData.birthDate || !isIsoDate(formData.birthDate)) {
+      toastError('Tanggal lahir wajib diisi agar umur dapat dihitung otomatis.');
+      return;
+    }
+
     try {
       let finalConclusionNotes = formData.conclusionNotes;
       if (formData.conclusionType === 'Temporary unfit') {
@@ -624,7 +698,7 @@ export default function McuPage() {
       const payload = {
         patientName: formData.patientName.trim(),
         nik: formData.nik.trim() || undefined,
-        ageGender: formData.ageGender.trim(),
+        ageGender: ageGenderText,
         birthDate: formData.birthDate.trim() || undefined,
         address: formData.address.trim() || undefined,
         examDate: formData.examDate,
@@ -697,6 +771,14 @@ export default function McuPage() {
     return sections.reduce((acc, s) => acc + s.items.length, 0);
   }, [sections]);
 
+  // Umur dihitung otomatis dari tanggal lahir pada tanggal pemeriksaan
+  const patientAge = useMemo(
+    () => calculateAge(formData.birthDate, formData.examDate),
+    [formData.birthDate, formData.examDate]
+  );
+  // Kolom ageGender tetap satu teks agar kompatibel dengan laporan & PDF yang sudah ada
+  const ageGenderText = `${patientAge === null ? '-' : patientAge} Tahun / ${formData.gender}`;
+
   // Paginasi pratinjau: menghitung tinggi dalam satuan pt, mengikuti geometri PDF server
   // (generateMcuPdf di mcu.service.ts): margin 3 cm, font Arial 11 pt, header ~132 pt.
   const paginatedPages = useMemo<PaginatedPage[]>(() => {
@@ -734,8 +816,8 @@ export default function McuPage() {
       11 * 1.15 + 4 +
       [
         formData.patientName,
-        formData.ageGender,
-        formData.birthDate || '-',
+        ageGenderText,
+        formatDateId(formData.birthDate),
         formData.address || '-',
         formData.examDate,
         formData.purpose || 'MCU kerja',
@@ -1134,28 +1216,40 @@ export default function McuPage() {
                               />
                             </div>
                             <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Umur / Jenis Kelamin *</label>
-                              <input
-                                type="text"
+                              <label className="block font-semibold text-slate-700 mb-1">Jenis Kelamin *</label>
+                              <select
                                 required
-                                value={formData.ageGender}
-                                onChange={(e) => setFormData({ ...formData, ageGender: e.target.value })}
-                                placeholder="Contoh: 35 Tahun / Laki-Laki"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
-                              />
+                                value={formData.gender}
+                                onChange={(e) => setFormData({ ...formData, gender: e.target.value as Gender })}
+                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 bg-white"
+                              >
+                                {GENDERS.map((g) => (
+                                  <option key={g} value={g}>
+                                    {g}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block font-semibold text-slate-700 mb-1">Tanggal Lahir</label>
+                              <label className="block font-semibold text-slate-700 mb-1">Tanggal Lahir *</label>
                               <input
-                                type="text"
+                                type="date"
+                                required
                                 value={formData.birthDate}
+                                max={formData.examDate || undefined}
                                 onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                                placeholder="Contoh: 20 Juni 1989"
-                                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900"
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-slate-900"
                               />
+                              <p className="text-[11px] text-slate-500 mt-1">
+                                Umur otomatis:{' '}
+                                <strong className="text-slate-800">
+                                  {patientAge === null ? '—' : `${patientAge} tahun`}
+                                </strong>
+                                {patientAge === null ? ' (isi tanggal lahir)' : ''}
+                              </p>
                             </div>
                             <div>
                               <label className="block font-semibold text-slate-700 mb-1">Tanggal Pemeriksaan *</label>
@@ -1764,8 +1858,8 @@ export default function McuPage() {
                                   <div style={{ marginTop: '4px', border: '0.5px solid #000' }}>
                                     {[
                                       ['Nama', formData.patientName || '[Nama Pasien]', true],
-                                      ['Umur / Jenis Kelamin', formData.ageGender, false],
-                                      ['Tanggal Lahir', formData.birthDate || '-', false],
+                                      ['Umur / Jenis Kelamin', ageGenderText, false],
+                                      ['Tanggal Lahir', formatDateId(formData.birthDate), false],
                                       ['Alamat', formData.address || '-', false],
                                       ['Tanggal Pemeriksaan', formData.examDate, false],
                                       ['Keperluan', formData.purpose || 'MCU kerja', false],
