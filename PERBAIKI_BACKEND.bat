@@ -59,12 +59,14 @@ echo       [OK] Build lengkap, mcu-template.js terbentuk.
 
 cd /d "%~dp0"
 echo.
-echo [4/4] Menjalankan production...
+echo [4/4] Menjalankan seluruh sistem (portal + SIMKlinik)...
+echo       Backend SIMKlinik sudah di-build ulang. Portal ikut dinyalakan
+echo       karena SIMKlinik dipakai lewat portal pada pemakaian sehari-hari.
 echo.
-node runner.js
+node portal\runner.js --with-simklinik
 
 if %errorlevel% neq 0 (
   echo.
-  echo [ERROR] Production berhenti dengan kode error.
+  echo [ERROR] Sistem berhenti dengan kode error.
   pause
 )

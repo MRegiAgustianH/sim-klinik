@@ -1,10 +1,21 @@
-import { IsNotEmpty, IsString, IsOptional, IsIn, Length } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsIn, Length, Matches } from 'class-validator';
+
+// NIK hanya boleh angka: @Length saja meloloskan 16 huruf. NIK yang bukan
+// angka tidak akan pernah cocok dengan identitas pasien mana pun.
+const NIK_PATTERN = /^\d{16}$/;
+const NIK_MESSAGE = 'NIK harus terdiri dari tepat 16 digit angka (tanpa spasi atau tanda baca).';
 
 export class CreatePatientDto {
   @IsNotEmpty({ message: 'NIK wajib diisi' })
   @IsString()
   @Length(16, 16, { message: 'NIK harus terdiri dari tepat 16 digit' })
+  @Matches(NIK_PATTERN, { message: NIK_MESSAGE })
   nik: string;
+
+  // Diisi form saat staf memilih pasien lama dari hasil pencarian otomatis.
+  // Bila kosong, backend mencari berdasarkan NIK lalu membuat identitas baru.
+  @IsOptional()
+  patientId?: number;
 
   @IsNotEmpty({ message: 'Nama lengkap wajib diisi' })
   @IsString()

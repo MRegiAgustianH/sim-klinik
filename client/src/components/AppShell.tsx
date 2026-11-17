@@ -17,6 +17,7 @@ import {
   Stethoscope,
   HeartPulse,
   ChevronRight,
+  LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -177,7 +178,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Tombol Logout */}
-        <div className="p-3 border-t border-slate-200">
+        <div className="p-3 border-t border-slate-200 space-y-2">
+          <PortalLink />
           <button
             onClick={logout}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium rounded-lg text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
@@ -238,7 +240,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
 
-            <div className="p-3 border-t border-slate-200">
+            <div className="p-3 border-t border-slate-200 space-y-2">
+              <PortalLink />
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -287,5 +290,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+  );
+}
+
+// Tautan kembali ke portal. Disembunyikan bila staf login langsung (tanpa
+// portal) karena portalnya mungkin tidak sedang berjalan di komputer itu.
+function PortalLink() {
+  const [portalUrl, setPortalUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('vaksinku_portal_url');
+    if (saved) setPortalUrl(saved);
+  }, []);
+
+  if (!portalUrl) return null;
+
+  return (
+    <a
+      href={portalUrl}
+      className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium rounded-lg text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors"
+    >
+      <LayoutGrid className="w-4 h-4" />
+      <span>Portal SIMKlinik</span>
+    </a>
   );
 }

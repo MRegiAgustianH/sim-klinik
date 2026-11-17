@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "ts-node src/main.ts",
     "start:dev": "ts-node src/main.ts",
-    "start:prod": "node dist/main.js"
+    "start:prod": "node dist/main.js",
+    "link:identity": "ts-node src/scripts/link-identity.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

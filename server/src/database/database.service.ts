@@ -234,9 +234,28 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       // Kolom sudah ada
     }
 
+    // patientId menunjuk ke patients.id di layanan identitas (port 4010).
+    // Sengaja tidak dibuat FOREIGN KEY karena tabelnya berada di database lain.
+    // Nilai NULL berarti pasien belum tertaut; data lama tetap bisa dibuka.
+    this.addPatientLinkColumns();
+
     // Database lama punya CHECK yang hanya mengizinkan 'Sehat'/'Sehat dengan catatan'.
     // Tanpa migrasi ini, menyimpan laporan dengan 'Fit' ditolak SQLite (HTTP 500).
     this.migrateMcuConclusionConstraint();
+  }
+
+  // Menautkan rekam medis ke identitas pasien di layanan identitas. Idempoten:
+  // kolom yang sudah ada dilewati, jadi aman dijalankan setiap start.
+  private addPatientLinkColumns() {
+    for (const table of ['vaccination_records', 'mcu_reports']) {
+      try {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN patientId INTEGER;`);
+        this.logger.log(`Kolom patientId ditambahkan ke ${table}.`);
+      } catch {
+        // Kolom sudah ada
+      }
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_patientId ON ${table}(patientId);`);
+    }
   }
 
   private migrateMcuConclusionConstraint() {
@@ -272,6 +291,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       'doctorSip',
       'createdAt',
       'updatedAt',
+      'patientId',
     ].join(', ');
 
     // SQLite tidak mendukung ALTER pada CHECK, jadi tabel dibangun ulang.
@@ -300,7 +320,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           doctorSip TEXT,
           createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
           updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-          examinationSections TEXT
+          examinationSections TEXT,
+          patientId INTEGER
         );
       `);
       this.db.exec(`INSERT INTO mcu_reports_new (${columns}) SELECT ${columns} FROM mcu_reports;`);

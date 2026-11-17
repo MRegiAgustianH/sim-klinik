@@ -8,6 +8,9 @@ export interface JwtPayload {
   username: string;
   role: 'Superadmin' | 'Dokter' | 'Perawat';
   fullName: string;
+  // Portal menerbitkan token per aplikasi tujuan (aud). Token tanpa aud berasal
+  // dari login lokal SIMKlinik dan tetap diterima.
+  aud?: string;
 }
 
 export interface AuthUser {
@@ -16,6 +19,10 @@ export interface AuthUser {
   fullName: string;
   role: 'Superadmin' | 'Dokter' | 'Perawat';
 }
+
+// Token yang diterbitkan portal untuk aplikasi lain tidak boleh dipakai di
+// sini, walaupun semuanya memakai JWT_SECRET yang sama.
+const EXPECTED_AUDIENCE = 'simklinik';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -31,6 +38,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthUser> {
+    if (payload.aud && payload.aud !== EXPECTED_AUDIENCE) {
+      throw new UnauthorizedException(
+        `Token ini diterbitkan untuk aplikasi '${payload.aud}', bukan '${EXPECTED_AUDIENCE}'.`
+      );
+    }
+
     const user = this.db.get<{
       id: number;
       username: string;

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
+import { IdentityModule } from './identity/identity.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PatientsModule } from './patients/patients.module';
@@ -8,10 +9,12 @@ import { StockModule } from './stock/stock.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ExportModule } from './export/export.module';
 import { McuModule } from './mcu/mcu.module';
+import { HealthController } from './health.controller';
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     DatabaseModule,
+    IdentityModule,
     AuthModule,
     UsersModule,
     PatientsModule,
@@ -20,5 +23,6 @@ import { McuModule } from './mcu/mcu.module';
     ExportModule,
     McuModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService, SqliteParam } from '../database/database.service';
+import { IdentityClient, IdentityPatient } from '../identity/identity-client.service';
 import { CreatePatientDto, UpdatePatientDto, DoctorApprovalDto, CompleteVaccinationDto } from './patients.dto';
 
 export interface PatientRecord {
@@ -30,6 +31,9 @@ export interface PatientRecord {
   pregnancyTestResult: 'Negatif' | 'Positif' | 'Tidak Dilakukan';
   batchNumber: string | null;
   vaccinatedAt: string | null;
+  // Rujukan ke patients.id di layanan identitas. NULL untuk rekam lama yang
+  // belum tertaut; diisi otomatis saat pasien didaftarkan lewat pencarian.
+  patientId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,7 +52,71 @@ export interface PatientFilterOptions {
 
 @Injectable()
 export class PatientsService {
-  constructor(private readonly db: DatabaseService) {}
+  private readonly logger = new Logger(PatientsService.name);
+
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly identity: IdentityClient,
+  ) {}
+
+  // Dipakai form registrasi: staf mengetik NIK, dan bila pasien ini sudah
+  // pernah datang, data lamanya dimuat agar tidak diketik ulang.
+  //
+  // Token staf diteruskan ke layanan identitas karena di sana /api/patients
+  // membutuhkan autentikasi. Backend SIMKlinik sendiri tidak menyimpan token
+  // pengguna, jadi token datang dari request yang sedang diproses.
+  async lookupIdentity(query: string, token: string) {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) {
+      return { available: true, total: 0, data: [] as IdentityPatient[] };
+    }
+
+    const result = await this.identity.searchPatients(trimmed, token);
+    return { available: true, total: result.total, data: result.data };
+  }
+
+  // Menautkan rekam baru ke identitas: pakai patientId yang sudah dikirim form
+  // bila staf memilih pasien lama, atau buat identitas baru dari data form.
+  private async resolvePatientId(dto: CreatePatientDto, token?: string): Promise<number | null> {
+    if (!token) return null;
+
+    if (dto.patientId) {
+      return dto.patientId;
+    }
+
+    // Pencarian NIK wajib: bila pasien sudah punya identitas tetapi rekam baru
+    // tidak ditautkan, kunjungan itu akan tampak sebagai pasien berbeda.
+    const existing = await this.identity.searchPatients(dto.nik.trim(), token);
+    const match = existing.data.find((p) => (p.nik || '').trim() === dto.nik.trim());
+    if (match) return match.id;
+
+    // Belum pernah datang. Identitas baru hanya bisa dibuat bila kunci layanan
+    // tersedia; kalau tidak, rekam tetap tersimpan tanpa tautan dan bisa
+    // ditautkan menyusul dengan link:identity.
+    if (!this.identity.isConfigured) {
+      this.logger.warn(
+        `Kunci layanan identitas belum diset; rekam NIK ${dto.nik} disimpan tanpa patientId.`
+      );
+      return null;
+    }
+
+    const created = await this.identity.createPatient(
+      {
+        nik: dto.nik.trim(),
+        fullName: dto.fullName.trim(),
+        gender: dto.gender,
+        birthPlace: dto.birthPlace.trim(),
+        birthDate: dto.birthDate,
+        email: dto.email ? dto.email.trim() : undefined,
+        address: dto.address.trim(),
+        phoneWa: dto.phoneWa.trim(),
+        occupation: dto.occupation || undefined,
+        maritalStatus: dto.maritalStatus || undefined,
+      },
+      token
+    );
+    return created.id;
+  }
 
   getAll(options: PatientFilterOptions = {}) {
     const conditions: string[] = ['1=1'];
@@ -126,17 +194,24 @@ export class PatientsService {
     return record;
   }
 
-  create(dto: CreatePatientDto, adminNameDefault?: string): PatientRecord {
+  async create(dto: CreatePatientDto, adminNameDefault?: string, token?: string): Promise<PatientRecord> {
     const monthYear = dto.monthYear || dto.plannedDate.substring(0, 7);
     const pregnancyTest = dto.gender === 'Laki-laki' ? 'Tidak Dilakukan' : (dto.pregnancyTestResult || 'Tidak Dilakukan');
+
+    // patientId diselesaikan lebih dulu: bila layanan identitas tidak
+    // terjangkau, pendaftaran dibatalkan sebelum ada baris yang tersimpan.
+    // Tanpa ini, rekam bisa masuk tanpa tautan identitas dan pemeriksaan
+    // duplikat berikutnya tidak akan menemukannya.
+    const patientId = await this.resolvePatientId(dto, token);
 
     const res = this.db.run(
       `INSERT INTO vaccination_records (
         nik, fullName, gender, birthPlace, birthDate, email, address, phoneWa,
         occupation, maritalStatus, vaccineType, plannedDate, plannedTime,
         doctorApproval, doctorNotes, status, doctorName, nurseName, adminName,
-        notes, infoSource, icvNumber, monthYear, pregnancyTestResult, batchNumber
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        notes, infoSource, icvNumber, monthYear, pregnancyTestResult, batchNumber,
+        patientId
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dto.nik.trim(),
         dto.fullName.trim(),
@@ -163,6 +238,7 @@ export class PatientsService {
         monthYear,
         pregnancyTest,
         dto.batchNumber || null,
+        patientId,
       ]
     );
 

@@ -233,7 +233,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
       {/* ============================================================ */}
       {isPosterModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsPosterModalOpen(false)} />
+          <div className="fixed inset-0 bg-white backdrop-blur-xs" onClick={() => setIsPosterModalOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 z-10 flex flex-col max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
               <h3 className="text-sm font-bold text-slate-900">Poster QR Code Ruang Tunggu</h3>
@@ -327,7 +327,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
       {/* ============================================================ */}
       {isConfigModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsConfigModalOpen(false)} />
+          <div className="fixed inset-0 bg-white backdrop-blur-xs" onClick={() => setIsConfigModalOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 z-10 flex flex-col space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">

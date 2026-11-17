@@ -33,14 +33,25 @@ server/dist-dev/
 client/.next/
 client/.next-dev/
 client/out/
+portal/portal-dashboard/.next/
+portal/portal-dashboard/.next-dev/
+portal/portal-dashboard/out/
+portal/identity-service/dist/
 dist/
 *.tsbuildinfo
 # 7. Berkas Unduhan / Ekspor Sementara
+#
+# PENTING: sebelumnya ada baris "!SUHERIONO (MCU).pdf", "!*.docx", dan "!*.pdf"
+# di sini. Tanda "!" membatalkan aturan ignore di atasnya, sehingga berkas hasil
+# MCU berisi nama pasien ikut ter-commit dan ter-push ke repositori publik.
+# Negasi semacam itu tidak boleh dikembalikan.
 *.xlsx
 *.pdf
-!SUHERIONO (MCU).pdf
-!header-hasil.jpeg
-!*.docx
+*.docx
+*.doc
+*.csv
+*.rtf
+
 # 5. Berkas Environment Variables
 .env
 .env*.local
@@ -58,11 +69,7 @@ ehthumbs.db
 *.swp
 *.swo
 
-# 7. Berkas Unduhan / Ekspor Sementara
-*.xlsx
-*.pdf
+# Gambar kop surat dipakai aplikasi, jadi dikecualikan dari aturan umum.
+# Hanya tiga berkas ini — jangan menambah pola "!*.jpeg" / "!*.png" karena
+# akan membuka semua gambar, termasuk hasil pindai dokumen pasien.
 !header-hasil.jpeg
-!*.docx
-!*.jpeg
-!*.png
-!*.jpg

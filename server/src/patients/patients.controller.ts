@@ -18,10 +18,38 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { AuthUser } from '../auth/jwt.strategy';
 
+// Permintaan yang sudah lolos JwtAuthGuard selalu membawa user. Token mentahnya
+// dibutuhkan untuk diteruskan ke layanan identitas, yang memakai token yang
+// sama untuk memeriksa hak akses pengguna.
+interface TokenRequest {
+  user: AuthUser;
+  headers: Record<string, string | string[] | undefined>;
+  query: Record<string, unknown>;
+}
+
+function extractToken(req: TokenRequest): string {
+  const header = req.headers['authorization'];
+  const value = Array.isArray(header) ? header[0] : header;
+  if (value && value.startsWith('Bearer ')) {
+    return value.slice('Bearer '.length).trim();
+  }
+  // JwtStrategy juga menerima ?token=, dipakai saat membuka cetakan dari
+  // jendela baru. Tanpa cabang ini, pencarian identitas gagal tanpa penjelasan.
+  const queryToken = req.query?.token;
+  return typeof queryToken === 'string' ? queryToken : '';
+}
+
 @Controller('api/patients')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
+
+  // Dipanggil form registrasi saat NIK sudah 16 digit. Didaftarkan sebelum
+  // ':id' agar 'identity-lookup' tidak terbaca sebagai ID.
+  @Get('identity-lookup')
+  lookupIdentity(@Query('q') q: string, @Request() req: TokenRequest) {
+    return this.patientsService.lookupIdentity(q || '', extractToken(req));
+  }
 
   @Get()
   getAll(
@@ -55,8 +83,8 @@ export class PatientsController {
 
   @Post()
   @Roles('Superadmin', 'Perawat', 'Dokter')
-  create(@Body() dto: CreatePatientDto, @Request() req: { user: AuthUser }) {
-    return this.patientsService.create(dto, req.user.fullName);
+  create(@Body() dto: CreatePatientDto, @Request() req: TokenRequest) {
+    return this.patientsService.create(dto, req.user.fullName, extractToken(req));
   }
 
   @Put(':id')

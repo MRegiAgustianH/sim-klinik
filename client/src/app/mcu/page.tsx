@@ -1091,7 +1091,7 @@ export default function McuPage() {
         {/* ============================================================ */}
         {isEditorOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
-            <div className="fixed inset-0 bg-slate-900" onClick={() => setIsEditorOpen(false)} />
+            <div className="fixed inset-0 bg-white" onClick={() => setIsEditorOpen(false)} />
             <div className="relative bg-slate-100 rounded-2xl shadow-2xl border border-slate-300 w-full max-w-7xl h-[95vh] flex flex-col z-10 overflow-hidden">
               {/* Header Modal */}
               <div className="p-3 sm:p-4 border-b border-teal-700 bg-teal-600 text-white flex items-center justify-between shrink-0">
@@ -1103,9 +1103,9 @@ export default function McuPage() {
                     <h2 className="text-sm sm:text-base font-bold text-white">
                       {isEditing ? `Edit Laporan MCU: ${formData.patientName}` : 'Formulir Laporan Medical Check Up (MCU)'}
                     </h2>
-                    <p className="text-[11px] text-teal-50">
+                    {/* <p className="text-[11px] text-teal-50">
                       Poin pemeriksaan fleksibel: hapus jika tidak dilakukan, tambah pemeriksaan lain sesuka kebutuhan.
-                    </p>
+                    </p> */}
                   </div>
                 </div>
 
@@ -1113,7 +1113,7 @@ export default function McuPage() {
                   <button
                     type="button"
                     onClick={handleSaveReport}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-white hover:bg-teal-800 text-teal-600 font-bold text-xs shadow-xs transition-colors cursor-pointer"
                   >
                     <span>Simpan Laporan</span>
                   </button>

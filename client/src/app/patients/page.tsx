@@ -29,9 +29,28 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+// Sebagian pasien sudah punya data di layanan identitas sebelum berkunjung
+// lagi. Bentuknya mengikuti GET /api/patients di layanan tersebut.
+interface IdentityPatient {
+  id: number;
+  nik: string | null;
+  fullName: string;
+  gender: string;
+  birthPlace: string | null;
+  birthDate: string | null;
+  email: string | null;
+  address: string | null;
+  phoneWa: string | null;
+  occupation: string | null;
+  maritalStatus: string | null;
+  age: number | null;
+  sourceApp?: string | null;
+}
+
 interface PatientRecord {
   id: number;
   nik: string;
+  patientId: number | null;
   fullName: string;
   gender: 'Laki-laki' | 'Perempuan';
   birthPlace: string;
@@ -130,6 +149,8 @@ export default function PatientsPage() {
   const todayStr = new Date().toISOString().split('T')[0];
   const initialFormState = {
     nik: '',
+    // Dikirim ke backend agar rekam tertaut ke identitas pasien yang sudah ada.
+    patientId: null as number | null,
     fullName: '',
     gender: 'Laki-laki' as 'Laki-laki' | 'Perempuan',
     birthPlace: '',
@@ -157,6 +178,13 @@ export default function PatientsPage() {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  // Pencarian otomatis di layanan identitas saat NIK lengkap 16 digit.
+  // Tujuannya mencegah pasien yang sama terdaftar dua kali dengan data
+  // yang diketik ulang.
+  const [identityMatch, setIdentityMatch] = useState<IdentityPatient | null>(null);
+  const [identityStatus, setIdentityStatus] = useState<'idle' | 'searching' | 'found' | 'new' | 'error'>('idle');
+  const [identityMessage, setIdentityMessage] = useState('');
+
   // Approval Form State (Doctor)
   const [doctorDecision, setDoctorDecision] = useState<'Disetujui' | 'Ditolak'>('Disetujui');
   const [doctorNotesInput, setDoctorNotesInput] = useState('');
@@ -165,6 +193,80 @@ export default function PatientsPage() {
   const [completeBatch, setCompleteBatch] = useState('');
   const [completeIcv, setCompleteIcv] = useState('');
   const [completeNotes, setCompleteNotes] = useState('');
+
+  // Menunggu 500 ms setelah digit terakhir agar tidak memanggil layanan
+  // identitas pada setiap ketikan.
+  useEffect(() => {
+    const nik = formData.nik;
+
+    // Saat mengedit rekam yang sudah ada, NIK tidak perlu dicari: pasiennya
+    // sudah jelas, dan mengganti pemilik rekam bukan hal yang diinginkan.
+    if (isEditing || nik.length !== 16) {
+      setIdentityStatus('idle');
+      setIdentityMatch(null);
+      setIdentityMessage('');
+      return;
+    }
+
+    let cancelled = false;
+    setIdentityStatus('searching');
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ available: boolean; total: number; data: IdentityPatient[] }>(
+          `/api/patients/identity-lookup?q=${encodeURIComponent(nik)}`
+        );
+        if (cancelled) return;
+
+        const exact = res.data.find((p) => (p.nik || '').trim() === nik);
+        if (exact) {
+          setIdentityMatch(exact);
+          setIdentityStatus('found');
+          setIdentityMessage('');
+        } else {
+          setIdentityMatch(null);
+          setIdentityStatus('new');
+          setIdentityMessage('Pasien baru — data akan disimpan sebagai identitas baru.');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setIdentityMatch(null);
+        setIdentityStatus('error');
+        setIdentityMessage(
+          err instanceof Error
+            ? `Tidak dapat memeriksa data pasien lama: ${err.message}`
+            : 'Tidak dapat memeriksa data pasien lama.'
+        );
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.nik, isEditing]);
+
+  // Mengisi form dari data pasien lama. Hanya field yang masih kosong yang
+  // diisi, supaya apa yang sudah diketik staf tidak tertimpa.
+  const applyIdentityMatch = () => {
+    if (!identityMatch) return;
+    const p = identityMatch;
+    setFormData((prev) => ({
+      ...prev,
+      patientId: p.id,
+      fullName: prev.fullName.trim() || p.fullName,
+      gender: p.gender === 'Perempuan' ? 'Perempuan' : 'Laki-laki',
+      birthPlace: prev.birthPlace.trim() || p.birthPlace || '',
+      birthDate: prev.birthDate === initialFormState.birthDate ? p.birthDate || prev.birthDate : prev.birthDate,
+      email: prev.email.trim() || p.email || '',
+      address: prev.address.trim() || p.address || '',
+      phoneWa: prev.phoneWa.trim() || p.phoneWa || '',
+      occupation: prev.occupation.trim() || p.occupation || '',
+      maritalStatus: (p.maritalStatus as typeof prev.maritalStatus) || prev.maritalStatus,
+    }));
+    setIdentityStatus('found');
+    setIdentityMessage(`Data ${p.fullName} dimuat dari riwayat kunjungan sebelumnya.`);
+  };
 
   const fetchPatients = useCallback(async () => {
     try {
@@ -238,6 +340,9 @@ export default function PatientsPage() {
       setIsEditing(false);
       setSelectedPatient(null);
       setFormData(initialFormState);
+      setIdentityMatch(null);
+      setIdentityStatus('idle');
+      setIdentityMessage('');
       fetchPatients();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menyimpan data pasien.';
@@ -251,6 +356,9 @@ export default function PatientsPage() {
     setIsEditing(true);
     setFormData({
       nik: p.nik,
+      // Tautan identitas ikut dibawa. Tanpa ini, menyimpan perubahan pada rekam
+      // lama akan menghapus patientId-nya dan rekam itu lepas dari identitas.
+      patientId: p.patientId,
       fullName: p.fullName,
       gender: p.gender,
       birthPlace: p.birthPlace,
@@ -380,9 +488,9 @@ export default function PatientsPage() {
               <Users className="w-6 h-6 text-teal-700" />
               Data Laporan Vaksinasi & Pasien
             </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            {/* <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               Pencatatan lengkap 22 parameter rekam vaksinasi, persetujuan dokter, skrining WUS, dan nomor buku kuning ICV
-            </p>
+            </p> */}
           </div>
 
           <div className="flex items-center gap-2">
@@ -392,6 +500,9 @@ export default function PatientsPage() {
                   setIsEditing(false);
                   setSelectedPatient(null);
                   setFormData(initialFormState);
+                  setIdentityMatch(null);
+                  setIdentityStatus('idle');
+                  setIdentityMessage('');
                   setIsAddModalOpen(true);
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
@@ -712,16 +823,16 @@ export default function PatientsPage() {
         {/* ============================================================ */}
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-900 backdrop-blur-xs" onClick={() => setIsAddModalOpen(false)} />
+            <div className="fixed inset-0 bg-white backdrop-blur-xs" onClick={() => setIsAddModalOpen(false)} />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col z-10 overflow-hidden">
               <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-teal-600 text-white">
                 <div>
                   <h2 className="text-base font-bold">
                     {isEditing ? 'Ubah Data Pasien & Rekam Vaksinasi' : 'Registrasi Pasien Baru & Rencana Vaksinasi'}
                   </h2>
-                  <p className="text-xs text-teal-100">
+                  {/* <p className="text-xs text-teal-100">
                     Formulir lengkap parameter medis, skrining WUS, jadwal klinik, dan buku ICV
-                  </p>
+                  </p> */}
                 </div>
                 <button
                   onClick={() => setIsAddModalOpen(false)}
@@ -748,11 +859,59 @@ export default function PatientsPage() {
                         maxLength={16}
                         required
                         value={formData.nik}
-                        onChange={(e) => setFormData({ ...formData, nik: e.target.value.replace(/\D/g, '') })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, patientId: null, nik: e.target.value.replace(/\D/g, '') })
+                        }
                         placeholder="Contoh: 3201015504920002"
                         className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-teal-600 font-mono text-slate-900"
                       />
+                      {identityStatus === 'searching' && (
+                        <p className="mt-1 text-[11px] text-slate-500">Memeriksa riwayat kunjungan...</p>
+                      )}
+                      {identityStatus === 'new' && (
+                        <p className="mt-1 text-[11px] text-teal-700">{identityMessage}</p>
+                      )}
+                      {identityStatus === 'error' && (
+                        <p className="mt-1 text-[11px] text-amber-700">{identityMessage}</p>
+                      )}
                     </div>
+
+                    {/* Hasil pencarian otomatis di layanan identitas */}
+                    {identityStatus === 'found' && identityMatch && (
+                      <div className="sm:col-span-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-xs text-slate-700">
+                            <p className="font-semibold text-teal-800">
+                              Sudah ada di data klinik: {identityMatch.fullName}
+                            </p>
+                            <p className="mt-0.5 text-slate-600">
+                              {identityMatch.gender}
+                              {identityMatch.age !== null ? ` • ${identityMatch.age} tahun` : ''}
+                              {identityMatch.phoneWa ? ` • ${identityMatch.phoneWa}` : ''}
+                              {formData.patientId
+                                ? ' — memakai data pasien yang sudah ada'
+                                : ' — data lama belum dimasukkan ke form'}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              Data ini berasal dari rekam MCU, bukan riwayat vaksinasi.
+                              Periksa kecocokan nama dan tanggal lahir sebelum dipakai.
+                            </p>
+                          </div>
+                          {!formData.patientId && (
+                            <button
+                              type="button"
+                              onClick={applyIdentityMatch}
+                              className="shrink-0 px-3 py-1.5 rounded-md bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-semibold cursor-pointer"
+                            >
+                              Isi dari data lama
+                            </button>
+                          )}
+                        </div>
+                        {identityMessage && formData.patientId && (
+                          <p className="mt-1.5 text-[11px] text-teal-800">{identityMessage}</p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Nama Lengkap */}
                     <div className="sm:col-span-2">
