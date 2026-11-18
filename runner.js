@@ -1,52 +1,50 @@
-// runner.js - Unified Application Launcher for SIMKlinik
-// Mode:
-//   node runner.js           -> PRODUCTION (port 8080 / 4000, database production)
-//   node runner.js --dev     -> DEVELOPMENT (port 8081 / 4001, database terpisah, fast refresh)
+// runner.js — launcher tunggal seluruh aplikasi klinik.
+//
+//   node runner.js                    -> PRODUCTION: identitas + portal + SIMKlinik
+//   node runner.js --dev              -> DEVELOPMENT: port & database terpisah, hot reload
+//   node runner.js --only=simklinik   -> identitas + SIMKlinik (tanpa portal)
+//   node runner.js --only=portal      -> identitas + portal (tanpa SIMKlinik)
+//
+// Port diambil dari config/ports.js. Mode dev berjalan berdampingan dengan
+// production yang sedang melayani pasien, jadi port dan database sengaja beda.
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const http = require('http');
 const fs = require('fs');
+const PORTS = require('./config/ports');
 
-// Mode dev dijalankan berdampingan dengan web production yang sedang melayani pasien,
-// jadi port dan file database sengaja berbeda.
-const MODES = {
-  prod: {
-    label: 'PRODUCTION',
-    backendPort: 4000,
-    frontendPort: 8080,
-    nextMode: 'start',
-    dbFile: path.join(__dirname, 'server', 'data', 'vaksinku.sqlite'),
-    // distDir Next.js harus berupa path relatif terhadap folder client
-    nextDir: '.next',
-    envMarker: null,
-    // Layanan identitas (portal/identity-service). Dijalankan lebih dulu dari
-    // backend SIMKlinik karena mode gagal cepat: tanpa layanan ini, pendaftaran
-    // pasien tidak bisa dilayani.
-    identityPort: 4010,
-    identityEnvMarker: null,
-    // Portal dashboard. Hanya dipakai sebagai alamat tujuan tombol "Portal"
-    // dan penukaran tiket SSO; portalnya dinyalakan lewat portal/runner.js.
-    portalPort: 8082,
-  },
-  dev: {
-    label: 'DEVELOPMENT',
-    backendPort: 4001,
-    frontendPort: 8081,
-    nextMode: 'dev',
-    dbFile: path.join(__dirname, 'server', 'data', 'vaksinku-dev.sqlite'),
-    nextDir: '.next-dev',
-    envMarker: path.join(__dirname, 'server', '.env.local'),
-    identityPort: 4011,
-    identityEnvMarker: path.join(__dirname, 'portal', 'identity-service', '.env.local'),
-    portalPort: 8083,
-  },
+const ROOT = __dirname;
+const DIRS = {
+  identity: path.join(ROOT, 'services', 'identity'),
+  api: path.join(ROOT, 'apps', 'simklinik-api'),
+  web: path.join(ROOT, 'apps', 'simklinik-web'),
+  portal: path.join(ROOT, 'apps', 'portal'),
 };
 
-const isDev = process.argv.includes('--dev') || process.env.MODE === 'dev';
-const MODE = isDev ? MODES.dev : MODES.prod;
-const BACKEND_PORT = MODE.backendPort;
-const FRONTEND_PORT = MODE.frontendPort;
+// Penanda mode untuk backend: keberadaan .env.local = development (database
+// -dev). Penanda yang tertinggal di production membuat data pasien masuk ke
+// database dev tanpa disadari, jadi runner selalu menyesuaikannya.
+const DEV_MARKERS = [path.join(DIRS.api, '.env.local'), path.join(DIRS.identity, '.env.local')];
+
+const args = process.argv.slice(2);
+const isDev = args.includes('--dev') || process.env.MODE === 'dev';
+const onlyArg = args.find((a) => a.startsWith('--only='));
+const only = onlyArg ? onlyArg.slice('--only='.length) : null;
+if (only && !['simklinik', 'portal'].includes(only)) {
+  console.error(`[GAGAL] --only=${only} tidak dikenal. Pilihan: simklinik, portal.`);
+  process.exit(1);
+}
+
+const P = isDev ? PORTS.dev : PORTS.prod;
+const OTHER = isDev ? PORTS.prod : PORTS.dev;
+const LABEL = isDev ? 'DEVELOPMENT' : 'PRODUCTION';
+const NEXT_MODE = isDev ? 'dev' : 'start';
+const NEXT_DIR = isDev ? '.next-dev' : '.next';
+const KEY_SUFFIX = isDev ? '-dev' : '';
+const runSimklinik = only !== 'portal';
+const runPortal = only !== 'simklinik';
+
 const USE_COLOR = process.stdout.isTTY;
 const color = (code, text) => (USE_COLOR ? `\x1b[${code}m${text}\x1b[0m` : text);
 const cyan = (t) => color('36', t);
@@ -54,46 +52,42 @@ const yellow = (t) => color('33', t);
 const green = (t) => color('32', t);
 const red = (t) => color('31', t);
 
+// Diteruskan ke setiap proses agar path data/rahasia tidak bergantung pada cwd.
+const BASE_ENV = { ...process.env, KLINIK_ROOT: ROOT };
+
+const children = [];
+let identityStartedHere = false;
+
 function logBanner(title, lines = []) {
   console.log('\n====================================================================');
   console.log(`  ${title}`);
   console.log('====================================================================');
-  for (const line of lines) {
-    console.log(`  ${line}`);
-  }
+  for (const line of lines) console.log(`  ${line}`);
   console.log('====================================================================\n');
 }
 
-function getLocalIpAddresses() {
-  const interfaces = os.networkInterfaces();
-  const addresses = [];
-  for (const name of Object.keys(interfaces)) {
-    const netList = interfaces[name];
-    if (netList) {
-      for (const net of netList) {
-        if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) {
-          addresses.push(net.address);
-        }
-      }
+function getLocalIp() {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const net of list || []) {
+      if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) return net.address;
     }
   }
-  return addresses.length > 0 ? addresses : ['127.0.0.1'];
+  return '127.0.0.1';
 }
 
 function killPortProcess(port) {
+  if (process.platform !== 'win32') return;
   try {
-    if (process.platform === 'win32') {
-      execSync(
-        `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
-        { stdio: 'ignore' }
-      );
-    }
+    execSync(
+      `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
+      { stdio: 'ignore' }
+    );
   } catch {
-    // ignore
+    // Port memang sudah bebas.
   }
 }
 
-function isPortInUse(port, healthPath = '/api/auth/profile') {
+function ping(port, healthPath) {
   const { promise, resolve } = Promise.withResolvers();
   const req = http.get(`http://127.0.0.1:${port}${healthPath}`, (res) => {
     res.resume();
@@ -107,337 +101,264 @@ function isPortInUse(port, healthPath = '/api/auth/profile') {
   return promise;
 }
 
-function checkPortReady(port, timeoutMs = 15000, healthPath = '/api/auth/profile') {
-  const { promise, resolve } = Promise.withResolvers();
-  const startTime = Date.now();
-
-  const interval = setInterval(() => {
-    const req = http.get(`http://127.0.0.1:${port}${healthPath}`, (res) => {
-      res.resume();
-      clearInterval(interval);
-      resolve(true);
-    });
-
-    req.on('error', () => {
-      if (Date.now() - startTime > timeoutMs) {
-        clearInterval(interval);
-        resolve(false);
-      }
-    });
-  }, 400);
-
-  return promise;
+async function waitReady(port, timeoutMs, healthPath) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await ping(port, healthPath)) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
 }
 
 function openBrowser(url) {
   try {
-    if (process.platform === 'win32') {
-      execSync(`start "" "${url}"`, { stdio: 'ignore' });
-    } else if (process.platform === 'darwin') {
-      execSync(`open "${url}"`, { stdio: 'ignore' });
-    } else {
-      execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
-    }
+    if (process.platform === 'win32') execSync(`start "" "${url}"`, { stdio: 'ignore' });
+    else if (process.platform === 'darwin') execSync(`open "${url}"`, { stdio: 'ignore' });
+    else execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
   } catch {
-    // fallback
+    // Browser tidak wajib terbuka.
   }
 }
 
+// stdout hanya diteruskan bila memuat salah satu pola (log NestJS sangat
+// ramai); stderr selalu diteruskan kecuali peringatan yang tidak penting.
+function spawnTracked(label, cmdArgs, options, { showPatterns = null, ignoreStderr = [] } = {}) {
+  const child = spawn(process.execPath, cmdArgs, { stdio: ['ignore', 'pipe', 'pipe'], ...options });
+  child.stdout?.on('data', (data) => {
+    const text = data.toString();
+    if (!showPatterns || showPatterns.some((p) => text.includes(p))) {
+      process.stdout.write(`      [${label}] ${text.trim()}\n`);
+    }
+  });
+  child.stderr?.on('data', (data) => {
+    const text = data.toString();
+    if (!['ExperimentalWarning', ...ignoreStderr].some((p) => text.includes(p))) {
+      process.stderr.write(`${red(`      [${label}]`)} ${text}`);
+    }
+  });
+  children.push({ label, child });
+  return child;
+}
+
+function ensureInstalled(label, dir) {
+  if (!fs.existsSync(path.join(dir, 'node_modules'))) {
+    console.log(`      [SETUP] Dependensi ${label} belum terpasang. Menjalankan npm install...`);
+    execSync('npm install', { cwd: dir, stdio: 'inherit' });
+  }
+}
+
+function ensureNextBuild(label, dir) {
+  if (isDev || fs.existsSync(path.join(dir, NEXT_DIR, 'BUILD_ID'))) return;
+  console.log(`      [BUILD] Build produksi ${label} belum ada. Menjalankan npm run build...`);
+  execSync('npm run build', { cwd: dir, stdio: 'inherit', env: { ...BASE_ENV, NEXT_DIST_DIR: NEXT_DIR } });
+  console.log(`      [OK] Build ${label} selesai.`);
+}
+
+function nextArgs(dir, port) {
+  return [path.join(dir, 'node_modules', 'next', 'dist', 'bin', 'next'), NEXT_MODE, '-H', '0.0.0.0', '-p', String(port)];
+}
+
+function cleanup(exitCode = 0) {
+  console.log(`\n[INFO] Menghentikan layanan klinik (${LABEL})...`);
+  for (const { child } of children) {
+    try {
+      child.kill();
+    } catch {
+      // Proses sudah berhenti.
+    }
+  }
+  if (runSimklinik) {
+    killPortProcess(P.simklinikWeb);
+    killPortProcess(P.simklinikApi);
+  }
+  if (runPortal) killPortProcess(P.portal);
+  // Layanan identitas milik jendela lain tidak boleh ikut dimatikan: portal
+  // dan aplikasi lain yang memakainya akan terputus.
+  if (identityStartedHere) killPortProcess(P.identity);
+  process.exit(exitCode);
+}
+
 async function main() {
+  const apps = [runPortal && 'portal', runSimklinik && 'SIMKlinik'].filter(Boolean).join(' + ');
   logBanner(
+    isDev ? cyan(`KLINIK - MODE DEVELOPMENT (${apps})`) : green(`KLINIK UTAMA DR. H. A. ROTINSULU CIANJUR - PRODUCTION (${apps})`),
     isDev
-      ? cyan('SIMKLINIK - MODE DEVELOPMENT (TERPISAH DARI WEB PRODUCTION)')
-      : green('SIMKLINIK - MODE PRODUCTION - KLINIK UTAMA DR. H. A. ROTINSULU CIANJUR'),
-    isDev
-      ? [
-          `Frontend dev : http://localhost:${FRONTEND_PORT}`,
-          `Backend dev  : http://localhost:${BACKEND_PORT}`,
-          'Database     : server/data/vaksinku-dev.sqlite (terpisah dari production)',
-          'Web production di port 8080 tetap berjalan dan tidak terpengaruh.',
-        ]
-      : [
-          'Sistem Informasi Manajemen Pelayanan Klinik (Vaksinasi, ICV, MCU & Layanan Medis)',
-          'Menyiapkan lingkungan aplikasi...',
-        ]
+      ? ['Port dan database terpisah; production yang sedang berjalan tidak terganggu.']
+      : ['Menyiapkan layanan identitas, portal, dan aplikasi pelayanan...']
   );
 
-  // 1. Bersihkan port milik mode ini saja (mode lain dibiarkan berjalan).
-  // Layanan identitas diperiksa lebih dulu: bila sudah berjalan, portnya tidak
-  // boleh dibersihkan — bisa jadi portal/runner.js yang menjalankannya, dan
-  // mematikannya akan memutus portal beserta aplikasi lain yang sedang dipakai.
-  const identityAlreadyRunning =
-    process.env.IDENTITY_ALREADY_RUNNING === '1' || (await isPortInUse(MODE.identityPort, '/api/health'));
-
-  console.log(`[1/5] Memeriksa port ${FRONTEND_PORT}, ${BACKEND_PORT}, dan ${MODE.identityPort}...`);
-  killPortProcess(FRONTEND_PORT);
-  killPortProcess(BACKEND_PORT);
-  if (identityAlreadyRunning) {
-    console.log(`      [INFO] Layanan identitas sudah berjalan di port ${MODE.identityPort}. Tidak akan diganggu.`);
+  // 1. Port. Layanan identitas yang sudah hidup dipakai ulang, bukan dimatikan:
+  //    dua instance pada satu file SQLite tidak aman.
+  console.log('[1/6] Memeriksa port...');
+  const identityRunning = await ping(P.identity, '/api/health');
+  if (identityRunning) {
+    console.log(yellow(`      [INFO] Layanan identitas sudah berjalan di port ${P.identity}; dipakai ulang.`));
   } else {
-    killPortProcess(MODE.identityPort);
+    killPortProcess(P.identity);
   }
-  if (!isDev) {
-    // Konfirmasi mode dev tidak ikut terbawa saat start production
-    const devBackendAlive = await isPortInUse(MODES.dev.backendPort);
-    if (devBackendAlive) {
-      console.log(`      [INFO] Mode development masih berjalan di port ${MODES.dev.frontendPort}/${MODES.dev.backendPort}.`);
+  if (runSimklinik) {
+    killPortProcess(P.simklinikWeb);
+    killPortProcess(P.simklinikApi);
+  }
+  if (runPortal) killPortProcess(P.portal);
+  if (await ping(OTHER.identity, '/api/health')) {
+    console.log(yellow(`      [INFO] Mode ${isDev ? 'production' : 'development'} juga sedang berjalan; tidak diganggu.`));
+  }
+  console.log('      [OK] Port siap.\n');
+
+  // 2. Penanda mode dan dependensi.
+  for (const marker of DEV_MARKERS) {
+    if (isDev && !fs.existsSync(marker)) {
+      fs.writeFileSync(marker, '# Dibuat otomatis oleh runner.js untuk mode development\n');
+    } else if (!isDev && fs.existsSync(marker)) {
+      fs.unlinkSync(marker);
+      console.log(`      [OK] Penanda development dihapus: ${path.relative(ROOT, marker)}`);
     }
-  } else {
-    const prodBackendAlive = await isPortInUse(MODES.prod.backendPort);
-    console.log(
-      prodBackendAlive
-        ? yellow(`      [INFO] Web production aktif di port ${MODES.prod.frontendPort}. Tidak akan diganggu.`)
-        : yellow('      [INFO] Web production tidak sedang berjalan.')
+  }
+  console.log('[2/6] Memeriksa dependensi...');
+  ensureInstalled('layanan identitas', DIRS.identity);
+  if (runSimklinik) {
+    ensureInstalled('backend SIMKlinik', DIRS.api);
+    ensureInstalled('frontend SIMKlinik', DIRS.web);
+  }
+  if (runPortal) ensureInstalled('portal', DIRS.portal);
+  console.log('      [OK] Dependensi lengkap.\n');
+
+  // 3. Layanan identitas lebih dulu: login portal dan pendaftaran pasien di
+  //    SIMKlinik (mode gagal cepat) tidak bisa jalan tanpa layanan ini.
+  if (!identityRunning) {
+    console.log(`[3/6] Menjalankan Layanan Identitas (port ${P.identity})...`);
+    spawnTracked(
+      'Identitas',
+      ['node_modules/ts-node/dist/bin.js', path.join(DIRS.identity, 'src', 'main.ts')],
+      { cwd: DIRS.identity, env: { ...BASE_ENV, PORT: String(P.identity) } },
+      { showPatterns: ['Layanan Identitas SIMKlinik Aktif'] }
     );
-  }
-  console.log(`      [OK] Port ${FRONTEND_PORT}, ${BACKEND_PORT}, dan ${MODE.identityPort} siap digunakan.\n`);
-
-  const serverDir = path.join(__dirname, 'server');
-  const clientDir = path.join(__dirname, 'client');
-  const identityDir = path.join(__dirname, 'portal', 'identity-service');
-
-  // Penanda mode untuk DatabaseService: ada = development (vaksinku-dev.sqlite),
-  // tidak ada = production (vaksinku.sqlite). Hanya dibaca backend, bukan Next.js.
-  if (MODE.envMarker) {
-    if (!fs.existsSync(MODE.envMarker)) {
-      fs.writeFileSync(MODE.envMarker, '# Dibuat otomatis oleh runner.js untuk mode development\n');
+    identityStartedHere = true;
+    if (!(await waitReady(P.identity, isDev ? 40000 : 20000, '/api/health'))) {
+      console.error(red(`      [GAGAL] Layanan identitas tidak siap di port ${P.identity}.`));
+      cleanup(1);
     }
-  } else if (fs.existsSync(MODES.dev.envMarker)) {
-    // Mode production: penanda development harus dihapus, jika tidak backend akan
-    // memakai vaksinku-dev.sqlite dan melewati pembersihan data demo.
-    fs.unlinkSync(MODES.dev.envMarker);
-    console.log('      [OK] Penanda mode development dihapus; backend memakai database production.');
-  }
-
-  // Penanda yang sama berlaku untuk layanan identitas. Penanda tertinggal di
-  // mode production membuat pasien baru masuk ke identity-dev.sqlite tanpa
-  // ada yang menyadari, jadi harus dihapus di sini juga.
-  if (MODE.identityEnvMarker) {
-    if (!fs.existsSync(MODE.identityEnvMarker)) {
-      fs.writeFileSync(MODE.identityEnvMarker, '# Dibuat otomatis oleh runner.js untuk mode development\n');
-    }
-  } else if (fs.existsSync(MODES.dev.identityEnvMarker)) {
-    fs.unlinkSync(MODES.dev.identityEnvMarker);
-    console.log('      [OK] Penanda development layanan identitas dihapus; memakai identity.sqlite.');
-  }
-
-  // Pastikan dependensi terpasang
-  if (!fs.existsSync(path.join(serverDir, 'node_modules'))) {
-    console.log('      [SETUP] Dependensi backend belum terpasang. Menjalankan npm install...');
-    execSync('npm install', { cwd: serverDir, stdio: 'inherit' });
-  }
-  if (!fs.existsSync(path.join(clientDir, 'node_modules'))) {
-    console.log('      [SETUP] Dependensi frontend belum terpasang. Menjalankan npm install...');
-    execSync('npm install', { cwd: clientDir, stdio: 'inherit' });
-  }
-  if (!fs.existsSync(path.join(identityDir, 'node_modules'))) {
-    console.log('      [SETUP] Dependensi layanan identitas belum terpasang. Menjalankan npm install...');
-    execSync('npm install', { cwd: identityDir, stdio: 'inherit' });
-  }
-
-  // 1b. Bila layanan identitas sudah berjalan (mis. dinyalakan portal/runner.js),
-  // jangan menyalakan instance kedua: dua instance pada satu file SQLite tidak
-  // aman, dan instance kedua akan mematikannya saat membersihkan port.
-  let identity = null;
-
-  if (identityAlreadyRunning) {
-    console.log(`[2/5] Layanan Identitas sudah berjalan di port ${MODE.identityPort} (tidak dijalankan ulang).\n`);
+    console.log('      [OK] Layanan identitas aktif.\n');
   } else {
-    // 2. Layanan identitas harus hidup lebih dulu. Backend SIMKlinik memakai mode
-    // gagal cepat, jadi tanpa langkah ini pendaftaran pasien akan langsung gagal.
-    console.log('[2/5] Menjalankan Layanan Identitas (port ' + MODE.identityPort + ')...');
-    identity = spawn(
-      process.execPath,
-      ['node_modules/ts-node/dist/bin.js', path.join(identityDir, 'src', 'main.ts')],
+    console.log('[3/6] Layanan identitas sudah berjalan (tidak dijalankan ulang).\n');
+  }
+
+  // 4. Service key antar-layanan di secrets/service-keys/. Portal memakainya
+  //    untuk menukar token; SIMKlinik untuk menukar tiket SSO.
+  console.log('[4/6] Memeriksa service key...');
+  const keyDir = path.join(ROOT, 'secrets', 'service-keys');
+  for (const [name, command] of [
+    ['portal', 'portal --portal'],
+    ['simklinik', 'simklinik'],
+  ]) {
+    if (!fs.existsSync(path.join(keyDir, `${name}${KEY_SUFFIX}.key`))) {
+      console.log(`      [SETUP] Membuat service key ${name}...`);
+      execSync(`npm run generate-key -- ${command}`, { cwd: DIRS.identity, stdio: 'inherit', env: BASE_ENV });
+    }
+  }
+  console.log('      [OK] Service key tersedia di secrets/service-keys.\n');
+
+  // 5. SIMKlinik: backend lalu frontend.
+  if (runSimklinik) {
+    console.log(`[5/6] Menjalankan SIMKlinik (backend ${P.simklinikApi}, frontend ${P.simklinikWeb})...`);
+    const dist = path.join(DIRS.api, 'dist', 'main.js');
+    const useDist = !isDev && fs.existsSync(dist);
+    if (!useDist) console.log('      [INFO] Backend dijalankan dari source (ts-node).');
+    spawnTracked(
+      'Backend',
+      useDist ? [dist] : ['node_modules/ts-node/dist/bin.js', path.join(DIRS.api, 'src', 'main.ts')],
       {
-        cwd: identityDir,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PORT: String(MODE.identityPort) },
+        cwd: DIRS.api,
+        env: {
+          ...BASE_ENV,
+          PORT: String(P.simklinikApi),
+          NODE_ENV: isDev ? 'development' : 'production',
+          IDENTITY_SERVICE_URL: `http://127.0.0.1:${P.identity}`,
+        },
+      },
+      {
+        showPatterns: ['Backend SIMKlinik Server Aktif', 'Nest application successfully started', ...(isDev ? ['error TS'] : [])],
+        ignoreStderr: ['keyFilename'],
       }
     );
-
-    identity.stdout.on('data', (d) => {
-      const str = d.toString();
-      if (str.includes('Layanan Identitas SIMKlinik Aktif')) {
-        process.stdout.write(`      [OK] ${str.trim()}\n`);
-      }
-    });
-    identity.stderr.on('data', (d) => {
-      const str = d.toString();
-      if (!str.includes('ExperimentalWarning')) {
-        process.stderr.write(`      [Identity Log]: ${str}`);
-      }
-    });
-
-    const isIdentityReady = await checkPortReady(MODE.identityPort, isDev ? 40000 : 20000, '/api/health');
-    if (!isIdentityReady) {
-      console.error(`      [GAGAL] Layanan identitas tidak siap di port ${MODE.identityPort}.`);
-      console.error('      Backend SIMKlinik tidak dijalankan karena pendaftaran pasien butuh layanan ini.');
-      identity.kill();
-      killPortProcess(MODE.identityPort);
-      process.exit(1);
+    if (await waitReady(P.simklinikApi, isDev ? 40000 : 15000, '/api/auth/profile')) {
+      console.log('      [OK] Backend SIMKlinik aktif.');
+    } else {
+      console.warn(yellow('      [PERINGATAN] Backend memerlukan waktu lebih lama. Cek log di atas.'));
     }
-    console.log(`      [OK] Layanan identitas aktif pada port ${MODE.identityPort}.\n`);
-  }
 
-  // 3. Jalankan Backend NestJS
-  console.log('[3/5] Menjalankan Backend Service (NestJS)...');
-  const serverDist = path.join(serverDir, 'dist', 'main.js');
-  const backendEntry = isDev || !fs.existsSync(serverDist) ? null : serverDist;
-  if (!backendEntry) {
-    console.log('      [INFO] Menjalankan backend dari source (ts-node), tanpa menyentuh dist production.');
-  }
-  const backend = spawn(
-    process.execPath,
-    backendEntry
-      ? [backendEntry]
-      : ['node_modules/ts-node/dist/bin.js', path.join(serverDir, 'src', 'main.ts')],
-    {
-      cwd: serverDir,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        PORT: String(BACKEND_PORT),
-        NODE_ENV: isDev ? 'development' : 'production',
-        // Backend membaca alamat ini untuk memanggil layanan identitas.
-        IDENTITY_SERVICE_URL: `http://127.0.0.1:${MODE.identityPort}`,
-      },
-    }
-  );
-
-  backend.stdout.on('data', (d) => {
-    const str = d.toString();
-    if (str.includes('Backend SIMKlinik Server Aktif') || str.includes('Nest application successfully started')) {
-      process.stdout.write(`      [OK] ${str.trim()}\n`);
-    }
-    if (isDev && (str.includes('Error') || str.includes('error TS'))) {
-      process.stdout.write(`${red('      [Backend Log]: ')}${str}`);
-    }
-  });
-  backend.stderr.on('data', (d) => {
-    const str = d.toString();
-    if (!str.includes('ExperimentalWarning') && !str.includes('keyFilename')) {
-      process.stderr.write(`      [Backend Log]: ${str}`);
-    }
-  });
-
-  // Tunggu backend siap
-  const isBackendReady = await checkPortReady(BACKEND_PORT, isDev ? 40000 : 15000);
-  if (!isBackendReady) {
-    console.warn('      [PERINGATAN] Backend memerlukan waktu lebih lama untuk inisialisasi.');
-    if (isDev) {
-      console.warn('      [PERINGATAN] Cek log TypeScript di atas bila ada error kompilasi.');
-    }
-  } else {
-    console.log(`      [OK] Backend Service aktif pada port ${BACKEND_PORT}.\n`);
-  }
-
-  // 3. Ambil IP Jaringan LAN
-  const lanIps = getLocalIpAddresses();
-  const primaryIp = lanIps[0] || '127.0.0.1';
-
-  // 4. Jalankan Frontend Next.js
-  console.log(`[4/5] Menjalankan Frontend Web Portal (Next.js - Mode: ${MODE.nextMode.toUpperCase()})...`);
-  if (isDev) {
-    console.log('      [FITUR AKTIF] Fast Refresh / Auto-Reload saat edit file .tsx aktif!');
-  } else {
-    const clientBuildId = path.join(clientDir, MODE.nextDir, 'BUILD_ID');
-    if (!fs.existsSync(clientBuildId)) {
-      console.log('      [BUILD] Build produksi Next.js belum ada.');
-      console.log('      [BUILD] Menjalankan kompilasi frontend (npm run build)...');
-      execSync('npm run build', {
-        cwd: clientDir,
-        stdio: 'inherit',
-        env: { ...process.env, NEXT_DIST_DIR: MODE.nextDir },
-      });
-      console.log('      [OK] Kompilasi frontend selesai.\n');
-    }
-  }
-
-  const nextBin = path.join(clientDir, 'node_modules', 'next', 'dist', 'bin', 'next');
-  const frontend = spawn(
-    process.execPath,
-    [nextBin, MODE.nextMode, '-H', '0.0.0.0', '-p', String(FRONTEND_PORT)],
-    {
-      cwd: clientDir,
+    ensureNextBuild('frontend SIMKlinik', DIRS.web);
+    spawnTracked('SIMKlinik', nextArgs(DIRS.web, P.simklinikWeb), {
+      cwd: DIRS.web,
       stdio: 'inherit',
       env: {
-        ...process.env,
-        BACKEND_PORT: String(BACKEND_PORT),
-        PORT: String(FRONTEND_PORT),
-        NEXT_DIST_DIR: MODE.nextDir,
-        // Dipakai halaman /sso dan route /api/sso/redeem: alamat portal tujuan
-        // penukaran tiket, dan port layanan identitas untuk mengambil profil
-        // akun portal.
-        PORTAL_URL: `http://127.0.0.1:${MODE.portalPort}`,
-        IDENTITY_PORT: String(MODE.identityPort),
+        ...BASE_ENV,
+        BACKEND_PORT: String(P.simklinikApi),
+        PORT: String(P.simklinikWeb),
+        NEXT_DIST_DIR: NEXT_DIR,
+        // Dipakai halaman /sso dan route /api/sso/redeem.
+        PORTAL_URL: `http://127.0.0.1:${P.portal}`,
+        IDENTITY_PORT: String(P.identity),
       },
-    }
-  );
-
-  // 5. Tampilkan Banner Akses
-  setTimeout(() => {
-    logBanner(
-      isDev
-        ? cyan('SIMKLINIK MODE DEVELOPMENT BERHASIL DIJALANKAN')
-        : green('APLIKASI SIMKLINIK ROTINSULU BERHASIL DIJALANKAN!'),
-      [
-        `Mode: ${MODE.label}`,
-        `Akses dari Komputer Ini:`,
-        `  -> http://localhost:${FRONTEND_PORT}`,
-        ``,
-        `Akses dari Komputer/Tablet Lain dalam SATU JARINGAN (LAN / Wi-Fi):`,
-        `  -> http://${primaryIp}:${FRONTEND_PORT}`,
-        ``,
-        `Akun Login Staf Klinik:`,
-        `  - Superadmin : Username: superadmin  | Password: admin123`,
-        `  - Dokter     : Username: dokter      | Password: dokter123`,
-        `  - Perawat    : Username: perawat     | Password: perawat123`,
-        ``,
-        isDev
-          ? `Database: server/data/vaksinku-dev.sqlite (web production tidak tersentuh)`
-          : `Database: server/data/vaksinku.sqlite`,
-        `Database identitas: portal/identity-service/data/${isDev ? 'identity-dev' : 'identity'}.sqlite`,
-        ``,
-        `Layanan Identitas (dipakai bersama semua app klinik):`,
-        `  -> http://localhost:${MODE.identityPort}/api/health`,
-        ``,
-        `Portal Dashboard (pintu masuk semua aplikasi klinik):`,
-        `  -> http://localhost:${MODE.portalPort}`,
-        `     Dinyalakan lewat portal/runner.js. Bila belum berjalan, tombol`,
-        `     "Portal SIMKlinik" di sidebar tidak muncul dan staf tetap bisa`,
-        `     login langsung seperti biasa.`,
-        ``,
-        `Tekan CTRL + C di jendela ini untuk mematikan aplikasi ${MODE.label}.`,
-      ]
-    );
-
-    console.log('[5/5] Membuka peramban browser otomatis...');
-    openBrowser(`http://localhost:${FRONTEND_PORT}/login`);
-  }, 1500);
-
-  // Clean exit handlers
-  function cleanup() {
-    console.log(`\n[INFO] Menghentikan seluruh service SIMKlinik (${MODE.label})...`);
-    try {
-      backend.kill();
-      frontend.kill();
-      // Hanya hentikan layanan identitas bila jendela ini yang menjalankannya.
-      // Bila portal/runner.js yang menyalakannya, mematikannya di sini akan
-      // memutus portal dan aplikasi lain yang sedang dipakai.
-      if (identity) identity.kill();
-    } catch {}
-    killPortProcess(FRONTEND_PORT);
-    killPortProcess(BACKEND_PORT);
-    if (identity) killPortProcess(MODE.identityPort);
-    process.exit(0);
+    });
+    console.log('');
   }
 
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
-  backend.on('exit', () => cleanup());
-  frontend.on('exit', () => cleanup());
-  if (identity) identity.on('exit', () => cleanup());
+  // 6. Portal dashboard.
+  if (runPortal) {
+    console.log(`[6/6] Menjalankan Portal (port ${P.portal})...`);
+    ensureNextBuild('portal', DIRS.portal);
+    spawnTracked('Portal', nextArgs(DIRS.portal, P.portal), {
+      cwd: DIRS.portal,
+      stdio: 'inherit',
+      env: {
+        ...BASE_ENV,
+        PORT: String(P.portal),
+        NEXT_DIST_DIR: NEXT_DIR,
+        IDENTITY_PORT: String(P.identity),
+        IDENTITY_MODE: isDev ? 'development' : 'production',
+      },
+    });
+  }
+
+  const ip = getLocalIp();
+  setTimeout(() => {
+    logBanner(isDev ? cyan('MODE DEVELOPMENT BERJALAN') : green('SISTEM KLINIK BERJALAN'), [
+      `Mode: ${LABEL}`,
+      '',
+      ...(runPortal
+        ? ['Portal (pintu masuk semua aplikasi):', `  Komputer ini -> http://localhost:${P.portal}`, `  Jaringan LAN -> http://${ip}:${P.portal}`, '']
+        : []),
+      ...(runSimklinik
+        ? ['SIMKlinik (vaksinasi, ICV, MCU):', `  Komputer ini -> http://localhost:${P.simklinikWeb}`, `  Jaringan LAN -> http://${ip}:${P.simklinikWeb}`, '']
+        : []),
+      `Layanan identitas: http://localhost:${P.identity}/api/health`,
+      '',
+      'Akun login (satu akun untuk semua aplikasi):',
+      '  - Superadmin : superadmin / admin123',
+      '  - Dokter     : dokter     / dokter123',
+      '  - Perawat    : perawat    / perawat123',
+      '',
+      `Database: data/simklinik/vaksinku${KEY_SUFFIX}.sqlite, data/identity/identity${KEY_SUFFIX}.sqlite`,
+      '',
+      `Tekan CTRL + C di jendela ini untuk mematikan seluruh layanan ${LABEL}.`,
+    ]);
+    if (!process.env.NO_BROWSER) {
+      openBrowser(runPortal ? `http://localhost:${P.portal}/login` : `http://localhost:${P.simklinikWeb}/login`);
+    }
+  }, 1500);
+
+  process.on('SIGINT', () => cleanup(0));
+  process.on('SIGTERM', () => cleanup(0));
+  // Kegagalan satu proses tidak boleh meninggalkan proses lain berjalan tanpa
+  // terpantau di jendela ini.
+  for (const { label, child } of children) {
+    child.on('exit', (code) => {
+      if (code !== 0 && code !== null) console.error(red(`      [GAGAL] Proses ${label} berhenti dengan kode ${code}.`));
+      cleanup(code ?? 0);
+    });
+  }
 }
 
 main().catch((err) => {
