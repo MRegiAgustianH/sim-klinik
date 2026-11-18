@@ -21,9 +21,11 @@ const store: Map<string, SsoTicket> = ((
 
 export const TICKET_TTL_MS = 60_000;
 
-export function issueTicket(ticket: SsoTicket) {
+// Kunci peta adalah nilai tiket yang dikirim ke browser, karena nilai itulah
+// yang nanti ditukar lewat redeemTicket().
+export function issueTicket(value: string, ticket: SsoTicket) {
   sweepExpired(Date.now());
-  store.set(ticket.appToken, ticket);
+  store.set(value, ticket);
 }
 
 /**

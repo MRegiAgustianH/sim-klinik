@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { issueTicket } from '@/lib/sso-tickets';
+import { issueTicket, TICKET_TTL_MS } from '@/lib/sso-tickets';
 import { identityUrl, serviceKeyOf } from '@/lib/service-keys';
 
 export const dynamic = 'force-dynamic';
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   }
 
   const ticket = randomBytes(32).toString('hex');
-  issueTicket({ appCode, appToken: minted.accessToken, expiresAt: Date.now() + 60_000 });
+  issueTicket(ticket, { appCode, appToken: minted.accessToken, expiresAt: Date.now() + TICKET_TTL_MS });
 
   // Halaman /sso di aplikasi tujuan menukar tiket ini menjadi token. Token
   // tidak pernah muncul di URL, jadi riwayat browser dan log akses server
