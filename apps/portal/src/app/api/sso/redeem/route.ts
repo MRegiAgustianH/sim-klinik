@@ -34,7 +34,9 @@ export async function POST(request: NextRequest) {
   }
 
   const result = redeemTicket(body.ticket, caller);
-  if (!result.ok) {
+  // Dibandingkan langsung dengan false: tsconfig portal memakai strict: false,
+  // dan tanpa strictNullChecks `!result.ok` tidak mempersempit tipenya.
+  if (result.ok === false) {
     const messages = {
       missing: 'Tiket tidak dikenal atau sudah dipakai.',
       expired: 'Tiket sudah kedaluwarsa. Silakan buka ulang dari portal.',
