@@ -19,12 +19,12 @@ import {
   CreateIcvInventoryDto,
 } from './stock.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '../auth/permissions.guard';
+import { PERMISSIONS } from '../auth/permissions';
 import { AuthUser } from '../auth/jwt.strategy';
 
 @Controller('api/stock')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 
@@ -40,7 +40,7 @@ export class StockController {
   }
 
   @Post('vaccines')
-  @Roles('Superadmin', 'Perawat')
+  @RequirePermission(PERMISSIONS.STOK_TULIS)
   createVaccineStock(
     @Body() dto: CreateVaccineStockDto,
     @Request() req: { user: AuthUser }
@@ -49,7 +49,7 @@ export class StockController {
   }
 
   @Put('vaccines/:id')
-  @Roles('Superadmin', 'Perawat')
+  @RequirePermission(PERMISSIONS.STOK_TULIS)
   updateVaccineStock(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateVaccineStockDto
@@ -58,7 +58,7 @@ export class StockController {
   }
 
   @Delete('vaccines/:id')
-  @Roles('Superadmin')
+  @RequirePermission(PERMISSIONS.STOK_HAPUS)
   deleteVaccineStock(@Param('id', ParseIntPipe) id: number) {
     return this.stockService.deleteVaccineStock(id);
   }
@@ -70,7 +70,7 @@ export class StockController {
   }
 
   @Post('icv')
-  @Roles('Superadmin', 'Perawat')
+  @RequirePermission(PERMISSIONS.STOK_TULIS)
   createIcvInventory(
     @Body() dto: CreateIcvInventoryDto,
     @Request() req: { user: AuthUser }
@@ -93,7 +93,7 @@ export class StockController {
   }
 
   @Post('mutations')
-  @Roles('Superadmin', 'Perawat')
+  @RequirePermission(PERMISSIONS.STOK_TULIS)
   addManualMutation(
     @Body() dto: AddStockMutationDto,
     @Request() req: { user: AuthUser }

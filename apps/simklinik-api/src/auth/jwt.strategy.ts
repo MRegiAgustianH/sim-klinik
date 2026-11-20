@@ -1,84 +1,98 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ServiceUnavailableException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { DatabaseService } from '../database/database.service';
+import { IdentityClient, IdentityError, IdentityMe } from '../identity/identity-client.service';
 
 export interface JwtPayload {
   sub: number;
   username: string;
-  role: 'Superadmin' | 'Dokter' | 'Perawat';
+  role: string;
   fullName: string;
-  // Portal menerbitkan token per aplikasi tujuan (aud). Token tanpa aud berasal
-  // dari login lokal SIMKlinik dan tetap diterima.
   aud?: string;
 }
 
+// Pengguna yang sedang login. id adalah id di layanan identitas: akun hanya
+// dibuat di portal, SIMKlinik tidak lagi memegang tabel pengguna sendiri.
+// role adalah jabatan (untuk tampilan); yang menentukan boleh tidaknya suatu
+// tindakan adalah permissions.
 export interface AuthUser {
   id: number;
   username: string;
   fullName: string;
-  role: 'Superadmin' | 'Dokter' | 'Perawat';
+  role: string;
+  isSuperadmin: boolean;
+  permissions: string[];
 }
 
-interface SimklinikUser {
-  id: number;
-  username: string;
-  fullName: string;
-  role: 'Superadmin' | 'Dokter' | 'Perawat';
-  isActive: number;
-}
-
-// Token yang diterbitkan portal untuk aplikasi lain tidak boleh dipakai di
-// sini, walaupun semuanya memakai JWT_SECRET yang sama.
 const EXPECTED_AUDIENCE = 'simklinik';
+
+// Profil + izin di-cache sebentar per token. Tanpa cache, setiap request
+// SIMKlinik menunggu satu panggilan ke layanan identitas. Dengan 30 detik,
+// akun yang dinonaktifkan atau izin yang dicabut di portal berlaku paling
+// lambat 30 detik kemudian.
+const CACHE_TTL_MS = 30_000;
+const CACHE_MAX = 500;
+
+const tokenFromRequest = ExtractJwt.fromExtractors([
+  ExtractJwt.fromAuthHeaderAsBearerToken(),
+  ExtractJwt.fromUrlQueryParameter('token'),
+]);
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private readonly db: DatabaseService) {
+  private readonly cache = new Map<string, { user: AuthUser; expiresAt: number }>();
+
+  constructor(private readonly identity: IdentityClient) {
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-        ExtractJwt.fromUrlQueryParameter('token'),
-      ]),
+      jwtFromRequest: tokenFromRequest,
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_SECRET || 'VaksinKU_Super_Secret_Key_Hospital_2026',
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: JwtPayload): Promise<AuthUser> {
-    if (payload.aud && payload.aud !== EXPECTED_AUDIENCE) {
+  async validate(req: unknown, payload: JwtPayload): Promise<AuthUser> {
+    // Token login lama SIMKlinik (tanpa aud) dan token aplikasi lain ditolak.
+    // Pengguna cukup login ulang; tokennya sekarang diterbitkan layanan identitas.
+    if (payload.aud !== EXPECTED_AUDIENCE) {
       throw new UnauthorizedException(
-        `Token ini diterbitkan untuk aplikasi '${payload.aud}', bukan '${EXPECTED_AUDIENCE}'.`
+        payload.aud
+          ? `Token ini diterbitkan untuk aplikasi '${payload.aud}', bukan '${EXPECTED_AUDIENCE}'.`
+          : 'Sesi lama sudah tidak berlaku. Silakan login ulang.'
       );
     }
 
-    // Token dari portal (aud = simklinik) membawa id milik layanan identitas,
-    // yang tidak sama dengan id di tabel users SIMKlinik. Mencocokkan lewat id
-    // bisa membuat staf masuk sebagai orang lain, jadi token portal dicocokkan
-    // lewat username. Token login lokal (tanpa aud) memakai id SIMKlinik sendiri.
-    const fromPortal = payload.aud === EXPECTED_AUDIENCE;
-    const user = fromPortal
-      ? this.db.get<SimklinikUser>('SELECT id, username, fullName, role, isActive FROM users WHERE username = ?', [
-          String(payload.username ?? '').trim().toLowerCase(),
-        ])
-      : this.db.get<SimklinikUser>('SELECT id, username, fullName, role, isActive FROM users WHERE id = ?', [payload.sub]);
+    const token = tokenFromRequest(req as never) as string;
+    const now = Date.now();
+    const cached = this.cache.get(token);
+    if (cached && cached.expiresAt > now) return cached.user;
 
-    if (!user) {
-      throw new UnauthorizedException(
-        fromPortal
-          ? `Akun portal '${payload.username}' belum terdaftar di SIMKlinik. Minta Superadmin membuat akun dengan username yang sama.`
-          : 'Pengguna tidak valid atau akun telah dinonaktifkan.'
-      );
-    }
-    if (user.isActive !== 1) {
-      throw new UnauthorizedException('Pengguna tidak valid atau akun telah dinonaktifkan.');
+    let me: IdentityMe;
+    try {
+      me = await this.identity.me(token);
+    } catch (err) {
+      if (err instanceof IdentityError && (err.status === 401 || err.status === 403)) {
+        this.cache.delete(token);
+        throw new UnauthorizedException(err.message);
+      }
+      if (err instanceof IdentityError) throw new ServiceUnavailableException(err.message);
+      throw err;
     }
 
-    return {
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      role: user.role,
+    const user: AuthUser = {
+      id: me.id,
+      username: me.username,
+      fullName: me.fullName,
+      role: me.role,
+      isSuperadmin: me.isSuperadmin,
+      permissions: me.permissions ?? [],
     };
+
+    if (this.cache.size >= CACHE_MAX) {
+      for (const [key, entry] of this.cache) if (entry.expiresAt <= now) this.cache.delete(key);
+      if (this.cache.size >= CACHE_MAX) this.cache.clear();
+    }
+    this.cache.set(token, { user, expiresAt: now + CACHE_TTL_MS });
+    return user;
   }
 }

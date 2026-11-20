@@ -42,7 +42,9 @@ export async function apiFetch<T = unknown>(endpoint: string, options: ApiFetchO
     } catch {
       // fallback jika bukan JSON
     }
-    throw new Error(errorMessage);
+    // status dibawa agar pemanggil bisa membedakan sesi ditolak (401/403)
+    // dari backend yang sedang tidak bisa dihubungi.
+    throw Object.assign(new Error(errorMessage), { status: res.status });
   }
 
   // Jika response berupa blob / file stream

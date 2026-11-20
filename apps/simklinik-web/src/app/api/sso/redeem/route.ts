@@ -22,12 +22,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync } from 'fs';
 import path from 'path';
+import { browserPortalUrl, serverPortalUrl } from '@/lib/portal-url';
 
 export const dynamic = 'force-dynamic';
 
-function portalUrl(): string {
-  return process.env.PORTAL_URL || 'http://127.0.0.1:8082';
-}
 
 function backendUrl(): string {
   return `http://127.0.0.1:${process.env.BACKEND_PORT || '4000'}`;
@@ -78,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   let accessToken: string;
   try {
-    const res = await fetch(`${portalUrl()}/api/sso/redeem`, {
+    const res = await fetch(`${serverPortalUrl()}/api/sso/redeem`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -122,7 +120,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ accessToken, user, portalUrl: portalUrl() });
+  return NextResponse.json({ accessToken, user, portalUrl: browserPortalUrl(request) });
 }
 
 async function errorMessage(res: Response): Promise<string> {

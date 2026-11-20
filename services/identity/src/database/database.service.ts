@@ -166,6 +166,40 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         UNIQUE(userId, appCode)
       );
     `);
+
+    // Hak akses fitur per aplikasi. Katalog (app_permissions dan presetnya)
+    // didaftarkan oleh aplikasi itu sendiri saat start, karena aplikasilah yang
+    // tahu fitur apa saja yang ia punya. Superadmin mencentang fitur per orang
+    // di portal; hasilnya disimpan di user_permissions.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS app_permissions (
+        appCode TEXT NOT NULL,
+        code TEXT NOT NULL,
+        label TEXT NOT NULL,
+        groupName TEXT,
+        description TEXT,
+        sortOrder INTEGER DEFAULT 0,
+        PRIMARY KEY (appCode, code)
+      );
+    `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS app_permission_presets (
+        appCode TEXT NOT NULL,
+        code TEXT NOT NULL,
+        label TEXT NOT NULL,
+        permissions TEXT NOT NULL,
+        sortOrder INTEGER DEFAULT 0,
+        PRIMARY KEY (appCode, code)
+      );
+    `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        userId INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        appCode TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        PRIMARY KEY (userId, appCode, permission)
+      );
+    `);
   }
 
   private seedInitialData() {

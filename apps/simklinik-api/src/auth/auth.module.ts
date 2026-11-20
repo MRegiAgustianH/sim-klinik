@@ -1,21 +1,17 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { RolesGuard } from './roles.guard';
+import { PermissionsGuard } from './permissions.guard';
+import { CatalogRegistrar } from './catalog-registrar';
 
+// Token tidak lagi diterbitkan di sini; layanan identitas yang menerbitkannya.
+// JwtStrategy hanya memverifikasi tanda tangannya dengan JWT_SECRET bersama.
 @Module({
-  imports: [
-    PassportModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'VaksinKU_Super_Secret_Key_Hospital_2026',
-      signOptions: { expiresIn: '12h' },
-    }),
-  ],
+  imports: [PassportModule],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RolesGuard],
-  exports: [AuthService, JwtStrategy, RolesGuard, JwtModule],
+  providers: [AuthService, JwtStrategy, PermissionsGuard, CatalogRegistrar],
+  exports: [AuthService, JwtStrategy, PermissionsGuard],
 })
 export class AuthModule {}

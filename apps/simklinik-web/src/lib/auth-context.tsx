@@ -4,13 +4,28 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { useRouter } from 'next/navigation';
 import { apiFetch } from './api';
 
-export type UserRole = 'Superadmin' | 'Dokter' | 'Perawat';
+// Kode fitur harus sama dengan apps/simklinik-api/src/auth/permissions.ts.
+export type Permission =
+  | 'pasien.tulis'
+  | 'pasien.setujui'
+  | 'pasien.selesai'
+  | 'pasien.hapus'
+  | 'registrasi.kelola'
+  | 'mcu.tulis'
+  | 'mcu.hapus'
+  | 'stok.tulis'
+  | 'stok.hapus'
+  | 'laporan.ekspor';
 
+// Akun dikelola di portal. role adalah jabatan untuk tampilan; yang
+// menentukan tombol mana yang muncul adalah permissions.
 export interface AuthUser {
   id: number;
   username: string;
   fullName: string;
-  role: UserRole;
+  role: string;
+  isSuperadmin: boolean;
+  permissions: string[];
 }
 
 interface AuthContextType {
@@ -19,10 +34,23 @@ interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  hasRole: (...roles: UserRole[]) => boolean;
+  /** true bila pengguna boleh memakai fitur ini (Superadmin selalu boleh). */
+  can: (permission: Permission) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function normalizeUser(raw: Partial<AuthUser> | null): AuthUser | null {
+  if (!raw || typeof raw.id !== 'number') return null;
+  return {
+    id: raw.id,
+    username: raw.username ?? '',
+    fullName: raw.fullName ?? '',
+    role: raw.role ?? '',
+    isSuperadmin: raw.isSuperadmin ?? raw.role === 'Superadmin',
+    permissions: Array.isArray(raw.permissions) ? raw.permissions : [],
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -38,21 +66,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login');
   }, [router]);
 
-  // Load user from storage on mount
+  const saveUser = useCallback((next: AuthUser) => {
+    localStorage.setItem('vaksinku_user', JSON.stringify(next));
+    setUser(next);
+  }, []);
+
+  // Profil tersimpan ditampilkan dulu agar halaman tidak berkedip, lalu
+  // diperbarui dari server: izin bisa saja diubah Superadmin di portal sejak
+  // login terakhir, dan sesi lama (sebelum akun dipindah ke portal) ditolak.
   useEffect(() => {
     const savedToken = localStorage.getItem('vaksinku_token');
     const savedUser = localStorage.getItem('vaksinku_user');
 
-    if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      } catch {
-        logout();
-      }
+    if (!savedToken) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
-  }, [logout]);
+
+    let saved: AuthUser | null = null;
+    try {
+      saved = normalizeUser(savedUser ? JSON.parse(savedUser) : null);
+    } catch {
+      saved = null;
+    }
+    setToken(savedToken);
+    if (saved) setUser(saved);
+
+    apiFetch<AuthUser>('/api/auth/profile')
+      .then((fresh) => {
+        const next = normalizeUser(fresh);
+        if (next) saveUser(next);
+        else logout();
+      })
+      .catch((err: unknown) => {
+        const status = (err as { status?: number })?.status;
+        // Hanya sesi yang ditolak yang diakhiri; backend yang sedang mati
+        // tidak boleh membuat staf ter-logout.
+        if (status === 401 || status === 403 || !saved) logout();
+      })
+      .finally(() => setIsLoading(false));
+  }, [logout, saveUser]);
 
   const login = async (username: string, password: string): Promise<void> => {
     const res = await apiFetch<{
@@ -64,21 +117,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ username, password }),
     });
 
+    const next = normalizeUser(res.user);
+    if (!next) throw new Error('Profil pengguna tidak lengkap.');
     localStorage.setItem('vaksinku_token', res.accessToken);
-    localStorage.setItem('vaksinku_user', JSON.stringify(res.user));
     setToken(res.accessToken);
-    setUser(res.user);
+    saveUser(next);
     router.push('/dashboard');
   };
 
-  const hasRole = (...roles: UserRole[]): boolean => {
-    if (!user) return false;
-    if (user.role === 'Superadmin') return true;
-    return roles.includes(user.role);
-  };
+  const can = useCallback(
+    (permission: Permission): boolean => {
+      if (!user) return false;
+      return user.isSuperadmin || user.permissions.includes(permission);
+    },
+    [user]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout, can }}>
       {children}
     </AuthContext.Provider>
   );

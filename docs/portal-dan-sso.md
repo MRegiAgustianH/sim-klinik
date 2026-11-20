@@ -55,6 +55,29 @@ Staf yang tidak lewat portal tetap bisa login langsung ke SIMKlinik seperti sebe
 
 ---
 
+## Hak akses fitur per aplikasi
+
+Akun dibuat **hanya di portal**. Aplikasi tidak punya tabel pengguna sendiri lagi: login di halaman SIMKlinik (8080) pun diperiksa ke layanan identitas, jadi password selalu satu.
+
+Superadmin mengatur dua lapis di **Portal > Pengguna > Ubah**:
+
+1. **Akses aplikasi**: aplikasi mana yang boleh dibuka. Tanpa centang ini, login ke aplikasi tersebut ditolak.
+2. **Fitur aplikasi**: muncul setelah aplikasinya dicentang. Pilih preset (Dokter, Perawat, Hanya lihat), lalu tambah atau kurangi per orang. Melihat data selalu boleh bagi yang punya akses aplikasi.
+
+Superadmin otomatis boleh semua fitur di semua aplikasi. Perubahan berlaku **paling lambat 30 detik** tanpa staf perlu login ulang, karena aplikasi menyimpan izin hanya 30 detik.
+
+**Daftar fitur milik aplikasi.** Setiap aplikasi mendaftarkan daftar fiturnya sendiri ke layanan identitas saat start (`PUT /api/apps/service/catalog`, memakai service key aplikasi itu). Daftar fitur SIMKlinik ada di `apps/simklinik-api/src/auth/permissions.ts`. Menambah fitur baru cukup dengan menambah baris di sana dan memasang `@RequirePermission(...)` di endpoint-nya; centangnya muncul di portal setelah SIMKlinik dinyalakan ulang.
+
+**Peralihan sekali jalan.** Saat fitur ini pertama kali dipasang, jalankan skrip yang memberi setiap staf SIMKlinik akses dan centang sesuai perannya yang lama:
+
+```bat
+cd apps\simklinik-api
+npm run migrasi:hak-akses -- --production --dry-run
+npm run migrasi:hak-akses -- --production
+```
+
+Skrip membackup database identitas lebih dulu, hanya membaca database SIMKlinik, dan tidak mengubah centang yang sudah ada, sehingga aman diulang.
+
 ## Cara SSO bekerja
 
 ```

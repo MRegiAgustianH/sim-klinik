@@ -106,6 +106,44 @@ export class IdentityClient {
   async health() {
     return this.request<{ status: string; users: number; patients: number }>('/api/health');
   }
+
+  // --- Akun & hak akses: semuanya dikelola layanan identitas ---
+
+  /** Login dengan akun portal; token langsung diterbitkan untuk SIMKlinik. */
+  async login(username: string, password: string) {
+    return this.request<{ accessToken: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, audience: 'simklinik' }),
+    });
+  }
+
+  /** Profil + fitur yang boleh dipakai di SIMKlinik, dibaca dari token pengguna. */
+  async me(token: string) {
+    return this.request<IdentityMe>('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  async changePassword(token: string, oldPassword: string, newPassword: string) {
+    return this.request<{ message: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  /** Mendaftarkan daftar fitur SIMKlinik agar bisa dicentang di portal. */
+  async registerCatalog(catalog: { permissions: unknown[]; presets: unknown[] }) {
+    return this.request<unknown>('/api/apps/service/catalog', { method: 'PUT', body: JSON.stringify(catalog) });
+  }
+}
+
+export interface IdentityMe {
+  id: number;
+  username: string;
+  fullName: string;
+  role: string;
+  apps: string[];
+  isSuperadmin: boolean;
+  permissions: string[];
 }
 
 // Error dari layanan identitas membawa status HTTP aslinya supaya controller

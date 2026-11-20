@@ -15,11 +15,11 @@ import { Response } from 'express';
 import { McuService } from './mcu.service';
 import { CreateMcuDto, UpdateMcuDto } from './mcu.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '../auth/permissions.guard';
+import { PERMISSIONS } from '../auth/permissions';
 
 @Controller('api/mcu')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class McuController {
   constructor(private readonly mcuService: McuService) {}
 
@@ -38,19 +38,19 @@ export class McuController {
   }
 
   @Post()
-  @Roles('Superadmin', 'Dokter')
+  @RequirePermission(PERMISSIONS.MCU_TULIS)
   create(@Body() dto: CreateMcuDto) {
     return this.mcuService.create(dto);
   }
 
   @Put(':id')
-  @Roles('Superadmin', 'Dokter')
+  @RequirePermission(PERMISSIONS.MCU_TULIS)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMcuDto) {
     return this.mcuService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles('Superadmin', 'Dokter')
+  @RequirePermission(PERMISSIONS.MCU_HAPUS)
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.mcuService.delete(id);
   }

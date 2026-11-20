@@ -121,7 +121,7 @@ function formatDateIndo(dateStr?: string | null): string {
 }
 
 export default function PatientsPage() {
-  const { user, hasRole } = useAuth();
+  const { user, can } = useAuth();
   const { success, error: toastError, warning } = useToast();
 
   const [patients, setPatients] = useState<PatientRecord[]>([]);
@@ -494,7 +494,7 @@ export default function PatientsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {hasRole('Superadmin', 'Perawat', 'Dokter') && (
+            {can('pasien.tulis') && (
               <button
                 onClick={() => {
                   setIsEditing(false);
@@ -740,7 +740,7 @@ export default function PatientsPage() {
                           </button>
 
                           {/* Tombol Validasi Dokter (Khusus Dokter & Superadmin) */}
-                          {hasRole('Dokter', 'Superadmin') && (
+                          {can('pasien.setujui') && (
                             <button
                               onClick={() => {
                                 setSelectedPatient(p);
@@ -756,7 +756,7 @@ export default function PatientsPage() {
                           )}
 
                           {/* Tombol Tindakan Vaksinasi (Khusus Perawat & Superadmin) */}
-                          {hasRole('Perawat', 'Superadmin') && p.status === 'Belum' && (
+                          {can('pasien.selesai') && p.status === 'Belum' && (
                             <button
                               onClick={() => {
                                 setSelectedPatient(p);
@@ -782,7 +782,7 @@ export default function PatientsPage() {
                           </button>
 
                           {/* Edit Data Umum */}
-                          {hasRole('Superadmin', 'Perawat', 'Dokter') && (
+                          {can('pasien.tulis') && (
                             <button
                               onClick={() => handleOpenEdit(p)}
                               className="p-1.5 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -793,7 +793,7 @@ export default function PatientsPage() {
                           )}
 
                           {/* Hapus Pasien (Khusus Superadmin) */}
-                          {hasRole('Superadmin') && (
+                          {can('pasien.hapus') && (
                             <button
                               onClick={() => setPatientToDelete(p)}
                               className="p-1.5 rounded text-rose-600 hover:text-rose-800 hover:bg-rose-50"

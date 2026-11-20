@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { AppsService } from './apps.service';
+import { PermissionsService, PermissionDef, PresetDef } from '../permissions/permissions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -8,7 +9,10 @@ import { ServiceKeyGuard } from '../auth/service-key.guard';
 
 @Controller('api/apps')
 export class AppsController {
-  constructor(private readonly appsService: AppsService) {}
+  constructor(
+    private readonly appsService: AppsService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   // Dipanggil portal setelah login: kartu aplikasi yang muncul hanya yang
   // boleh dibuka pengguna tersebut.
@@ -37,6 +41,25 @@ export class AppsController {
   @Get('service/list')
   listForService() {
     return this.appsService.listForService();
+  }
+
+  // Dipanggil backend aplikasi saat start untuk mendaftarkan daftar fiturnya.
+  // Kode aplikasi diambil dari pemilik service key, bukan dari body, sehingga
+  // aplikasi hanya bisa mengubah katalognya sendiri.
+  @UseGuards(ServiceKeyGuard)
+  @Put('service/catalog')
+  registerCatalog(
+    @Request() req: { serviceName: string },
+    @Body() body: { permissions: PermissionDef[]; presets?: PresetDef[] }
+  ) {
+    return this.permissionsService.registerCatalog(req.serviceName, body?.permissions, body?.presets ?? []);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Superadmin')
+  @Get(':code/catalog')
+  catalog(@Param('code') code: string) {
+    return this.permissionsService.getCatalog(code);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

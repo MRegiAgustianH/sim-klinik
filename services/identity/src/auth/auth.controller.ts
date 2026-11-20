@@ -13,10 +13,14 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthUser } from './jwt.strategy';
 import { ServiceKeyGuard } from './service-key.guard';
 import { RequireServiceKey } from './service-key.decorator';
+import { PermissionsService } from '../permissions/permissions.service';
 
 @Controller('api/auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   @Post('login')
   async login(@Body() dto: LoginDto) {
@@ -66,6 +70,10 @@ export class AuthController {
   // sudah diyakini valid — app tidak perlu memegang salinan tabel users.
   // JwtAuthGuard membaca ulang akses dari database, jadi app yang memanggil
   // endpoint ini tetap mendapat data yang sudah diperbarui.
+  //
+  // permissions berisi fitur yang boleh dipakai di aplikasi pemilik token
+  // (aud), dibaca ulang dari database setiap kali. Aplikasi menyimpannya
+  // sebentar saja, sehingga perubahan centang di portal cepat berlaku.
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Request() req: { user: AuthUser }) {
@@ -75,6 +83,8 @@ export class AuthController {
       fullName: req.user.fullName,
       role: req.user.role,
       apps: req.user.apps,
+      isSuperadmin: req.user.role === 'Superadmin',
+      permissions: this.permissionsService.permissionsOf(req.user.id, req.user.role, req.user.aud),
     };
   }
 }

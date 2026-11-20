@@ -30,6 +30,8 @@ Repositori: `https://github.com/MRegiAgustianH/sim-klinik.git`
 
 Ubah kata sandi lewat menu **Profil** setelah login pertama.
 
+**Akun hanya dibuat di portal.** Satu akun dan satu password berlaku untuk portal dan semua aplikasi, termasuk halaman login SIMKlinik di port 8080. Superadmin mengatur di **Portal > Pengguna**: aplikasi mana yang boleh dibuka, lalu fitur apa saja yang boleh dipakai di tiap aplikasi (centang per fitur, dengan preset Dokter / Perawat / Hanya lihat). Rinciannya ada di [docs/portal-dan-sso.md](docs/portal-dan-sso.md#hak-akses-fitur-per-aplikasi).
+
 ---
 
 ## 2. Struktur Folder

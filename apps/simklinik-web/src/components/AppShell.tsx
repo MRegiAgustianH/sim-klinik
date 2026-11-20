@@ -19,13 +19,15 @@ import {
   ChevronRight,
   LayoutGrid,
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, Permission } from '@/lib/auth-context';
 
 interface NavItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles?: ('Superadmin' | 'Dokter' | 'Perawat')[];
+  // Menu disembunyikan bila pengguna tidak punya fitur ini (diatur di portal).
+  permission?: Permission;
+  superadminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -53,17 +55,18 @@ const NAV_ITEMS: NavItem[] = [
     name: 'Laporan & Export',
     href: '/reports',
     icon: FileSpreadsheet,
+    permission: 'laporan.ekspor',
   },
   {
     name: 'Kelola Pengguna',
     href: '/users',
     icon: UserCog,
-    roles: ['Superadmin'],
+    superadminOnly: true,
   },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, logout, hasRole } = useAuth();
+  const { user, isLoading, logout, can } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,10 +91,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  // Filter menu berdasarkan role
   const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (!item.roles) return true;
-    return hasRole(...item.roles);
+    if (item.superadminOnly) return Boolean(user?.isSuperadmin);
+    return item.permission ? can(item.permission) : true;
   });
 
   const getRoleBadge = (role?: string) => {
@@ -293,15 +295,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Tautan kembali ke portal. Disembunyikan bila staf login langsung (tanpa
-// portal) karena portalnya mungkin tidak sedang berjalan di komputer itu.
+// Tautan kembali ke portal. Alamatnya diminta ke server, yang menyusunnya
+// dari alamat yang dipakai browser ini, sehingga benar juga bagi staf di
+// komputer lain (bukan 127.0.0.1 milik server).
 function PortalLink() {
-  const [portalUrl, setPortalUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('vaksinku_portal_url');
-    if (saved) setPortalUrl(saved);
-  }, []);
+  const portalUrl = usePortalUrl();
 
   if (!portalUrl) return null;
 
@@ -314,4 +312,25 @@ function PortalLink() {
       <span>Portal SIMKlinik</span>
     </a>
   );
+}
+
+export function usePortalUrl(): string | null {
+  const [portalUrl, setPortalUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/portal-info')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { portalUrl?: string } | null) => {
+        if (!cancelled && body?.portalUrl) setPortalUrl(body.portalUrl);
+      })
+      .catch(() => {
+        // Tanpa alamat portal, tombolnya cukup tidak ditampilkan.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return portalUrl;
 }

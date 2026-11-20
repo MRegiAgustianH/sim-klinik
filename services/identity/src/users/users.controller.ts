@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Body, Param, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, SetAppAccessDto } from './users.dto';
+import { CreateUserDto, UpdateUserDto, SetAppAccessDto, SetPermissionsDto } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -35,5 +35,12 @@ export class UsersController {
   @Put(':id/apps')
   setAppAccess(@Param('id', ParseIntPipe) id: number, @Body() dto: SetAppAccessDto) {
     return this.usersService.setAppAccess(id, dto.appCodes);
+  }
+
+  // Centang fitur untuk satu aplikasi. Daftar yang dikirim menggantikan
+  // centang lama di aplikasi itu.
+  @Put(':id/permissions')
+  setPermissions(@Param('id', ParseIntPipe) id: number, @Body() dto: SetPermissionsDto) {
+    return this.usersService.setPermissions(id, dto.appCode, dto.permissions);
   }
 }

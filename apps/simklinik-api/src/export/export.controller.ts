@@ -10,13 +10,16 @@ import {
 import { Response } from 'express';
 import { ExportService } from './export.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard, RequirePermission } from '../auth/permissions.guard';
+import { PERMISSIONS } from '../auth/permissions';
 
 @Controller('api/export')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ExportController {
   constructor(private readonly exportService: ExportService) {}
 
   @Get('excel')
+  @RequirePermission(PERMISSIONS.LAPORAN_EKSPOR)
   async exportExcel(@Query('month') month: string, @Res() res: Response) {
     const selectedMonth = month || new Date().toISOString().substring(0, 7);
     const buffer = await this.exportService.generateExcelReport(selectedMonth);
@@ -44,6 +47,7 @@ export class ExportController {
   }
 
   @Get('monthly/pdf')
+  @RequirePermission(PERMISSIONS.LAPORAN_EKSPOR)
   async exportMonthlyPdf(@Query('month') month: string, @Res() res: Response) {
     const selectedMonth = month || new Date().toISOString().substring(0, 7);
     const buffer = await this.exportService.generateMonthlyPdf(selectedMonth);

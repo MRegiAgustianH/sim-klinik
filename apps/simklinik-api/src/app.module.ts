@@ -3,7 +3,6 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
 import { IdentityModule } from './identity/identity.module';
 import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
 import { PatientsModule } from './patients/patients.module';
 import { StockModule } from './stock/stock.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -16,7 +15,6 @@ import { HealthController } from './health.controller';
     DatabaseModule,
     IdentityModule,
     AuthModule,
-    UsersModule,
     PatientsModule,
     StockModule,
     DashboardModule,

@@ -1,115 +1,64 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcryptjs';
-import { DatabaseService } from '../database/database.service';
+import { Injectable, UnauthorizedException, ForbiddenException, BadRequestException, HttpException } from '@nestjs/common';
+import { IdentityClient, IdentityError } from '../identity/identity-client.service';
 import { LoginDto, ChangePasswordDto } from './auth.dto';
-import { AuthUser, JwtPayload } from './jwt.strategy';
+import { AuthUser } from './jwt.strategy';
 
-export interface DbUser {
-  id: number;
-  username: string;
-  password: string;
-  fullName: string;
-  role: 'Superadmin' | 'Dokter' | 'Perawat';
-  isActive: number;
-}
-
-export interface UserProfile {
-  id: number;
-  username: string;
-  fullName: string;
-  role: 'Superadmin' | 'Dokter' | 'Perawat';
-  isActive: number;
-  createdAt: string;
-}
-
+// Akun hanya ada di layanan identitas. SIMKlinik meneruskan login dan ganti
+// password ke sana, sehingga satu akun dan satu password berlaku di portal
+// maupun di halaman login SIMKlinik (port 8080).
 @Injectable()
 export class AuthService {
-  constructor(
-    private readonly db: DatabaseService,
-    private readonly jwtService: JwtService,
-  ) {}
+  constructor(private readonly identity: IdentityClient) {}
 
-  async login(loginDto: LoginDto) {
-    const { username, password } = loginDto;
-
-    const user = this.db.get<DbUser>(
-      'SELECT id, username, password, fullName, role, isActive FROM users WHERE username = ?',
-      [username.trim().toLowerCase()]
-    );
-
-    if (!user) {
-      throw new UnauthorizedException('Username atau password salah.');
+  async login(dto: LoginDto) {
+    let accessToken: string;
+    try {
+      ({ accessToken } = await this.identity.login(dto.username.trim().toLowerCase(), dto.password));
+    } catch (err) {
+      throw toHttp(err);
     }
 
-    if (user.isActive !== 1) {
-      throw new UnauthorizedException('Akun pengguna telah dinonaktifkan. Hubungi Superadministrator.');
+    let me;
+    try {
+      me = await this.identity.me(accessToken);
+    } catch (err) {
+      throw toHttp(err);
     }
-
-    const isMatch = bcrypt.compareSync(password, user.password);
-    if (!isMatch) {
-      throw new UnauthorizedException('Username atau password salah.');
-    }
-
-    const payload: JwtPayload = {
-      sub: user.id,
-      username: user.username,
-      role: user.role,
-      fullName: user.fullName,
-    };
-
-    const token = this.jwtService.sign(payload);
 
     return {
       message: 'Login berhasil',
-      accessToken: token,
+      accessToken,
       user: {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        role: user.role,
+        id: me.id,
+        username: me.username,
+        fullName: me.fullName,
+        role: me.role,
+        isSuperadmin: me.isSuperadmin,
+        permissions: me.permissions,
       },
     };
   }
 
-  async getProfile(user: AuthUser): Promise<UserProfile> {
-    const userDetail = this.db.get<UserProfile>(
-      'SELECT id, username, fullName, role, isActive, createdAt FROM users WHERE id = ?',
-      [user.id]
-    );
-    if (!userDetail) {
-      throw new UnauthorizedException('Pengguna tidak ditemukan.');
-    }
-    return userDetail;
+  getProfile(user: AuthUser) {
+    return user;
   }
 
-  async changePassword(user: AuthUser, dto: ChangePasswordDto) {
-    const userInDb = this.db.get<DbUser>(
-      'SELECT id, password FROM users WHERE id = ?',
-      [user.id]
-    );
-
-    if (!userInDb) {
-      throw new UnauthorizedException('Pengguna tidak ditemukan.');
+  async changePassword(token: string, dto: ChangePasswordDto) {
+    try {
+      return await this.identity.changePassword(token, dto.oldPassword, dto.newPassword);
+    } catch (err) {
+      throw toHttp(err);
     }
-
-    const isOldMatch = bcrypt.compareSync(dto.oldPassword, userInDb.password);
-    if (!isOldMatch) {
-      throw new BadRequestException('Password lama yang Anda masukkan tidak sesuai.');
-    }
-
-    if (dto.newPassword.length < 6) {
-      throw new BadRequestException('Password baru minimal harus 6 karakter.');
-    }
-
-    const salt = bcrypt.genSaltSync(10);
-    const newHash = bcrypt.hashSync(dto.newPassword, salt);
-
-    this.db.run(
-      'UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-      [newHash, user.id]
-    );
-
-    return { message: 'Password berhasil diperbarui.' };
   }
+}
+
+// Status dari layanan identitas diteruskan apa adanya agar pesan seperti
+// "Username atau password salah" atau "tidak memiliki akses ke aplikasi
+// 'simklinik'" sampai ke layar login.
+function toHttp(err: unknown): unknown {
+  if (!(err instanceof IdentityError)) return err;
+  if (err.status === 401) return new UnauthorizedException(err.message);
+  if (err.status === 403) return new ForbiddenException(err.message);
+  if (err.status === 400) return new BadRequestException(err.message);
+  return new HttpException(err.message, err.status);
 }

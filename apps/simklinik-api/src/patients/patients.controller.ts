@@ -14,8 +14,8 @@ import {
 import { PatientsService } from './patients.service';
 import { CreatePatientDto, UpdatePatientDto, DoctorApprovalDto, CompleteVaccinationDto } from './patients.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '../auth/permissions.guard';
+import { PERMISSIONS } from '../auth/permissions';
 import { AuthUser } from '../auth/jwt.strategy';
 
 // Permintaan yang sudah lolos JwtAuthGuard selalu membawa user. Token mentahnya
@@ -40,7 +40,7 @@ function extractToken(req: TokenRequest): string {
 }
 
 @Controller('api/patients')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PatientsController {
   constructor(private readonly patientsService: PatientsService) {}
 
@@ -82,19 +82,19 @@ export class PatientsController {
   }
 
   @Post()
-  @Roles('Superadmin', 'Perawat', 'Dokter')
+  @RequirePermission(PERMISSIONS.PASIEN_TULIS)
   create(@Body() dto: CreatePatientDto, @Request() req: TokenRequest) {
     return this.patientsService.create(dto, req.user.fullName, extractToken(req));
   }
 
   @Put(':id')
-  @Roles('Superadmin', 'Perawat', 'Dokter')
+  @RequirePermission(PERMISSIONS.PASIEN_TULIS)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePatientDto) {
     return this.patientsService.update(id, dto);
   }
 
   @Put(':id/doctor-approval')
-  @Roles('Superadmin', 'Dokter')
+  @RequirePermission(PERMISSIONS.PASIEN_SETUJUI)
   updateDoctorApproval(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: DoctorApprovalDto,
@@ -104,7 +104,7 @@ export class PatientsController {
   }
 
   @Put(':id/complete')
-  @Roles('Superadmin', 'Perawat')
+  @RequirePermission(PERMISSIONS.PASIEN_SELESAI)
   completeVaccination(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CompleteVaccinationDto,
@@ -114,7 +114,7 @@ export class PatientsController {
   }
 
   @Delete(':id')
-  @Roles('Superadmin')
+  @RequirePermission(PERMISSIONS.PASIEN_HAPUS)
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.patientsService.delete(id);
   }

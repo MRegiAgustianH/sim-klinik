@@ -53,6 +53,15 @@ export class UpdateUserDto {
   password?: string;
 }
 
+export class SetPermissionsDto {
+  @IsIn(APP_CODES as unknown as string[], { message: 'Kode aplikasi tidak dikenal.' })
+  appCode: AppCode;
+
+  @IsArray()
+  @IsString({ each: true })
+  permissions: string[];
+}
+
 export class SetAppAccessDto {
   @IsArray()
   @IsIn(APP_CODES as unknown as string[], { each: true, message: 'Kode aplikasi tidak dikenal.' })

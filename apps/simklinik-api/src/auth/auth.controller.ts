@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request, Headers } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, ChangePasswordDto } from './auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -15,16 +15,16 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  async getProfile(@Request() req: { user: AuthUser }) {
+  getProfile(@Request() req: { user: AuthUser }) {
     return this.authService.getProfile(req.user);
   }
 
+  // Password diganti di layanan identitas memakai token pengguna sendiri,
+  // jadi berlaku juga untuk login portal.
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
-  async changePassword(
-    @Request() req: { user: AuthUser },
-    @Body() dto: ChangePasswordDto
-  ) {
-    return this.authService.changePassword(req.user, dto);
+  async changePassword(@Headers('authorization') authorization: string, @Body() dto: ChangePasswordDto) {
+    const token = (authorization || '').replace(/^Bearer\s+/i, '').trim();
+    return this.authService.changePassword(token, dto);
   }
 }

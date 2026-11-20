@@ -66,7 +66,7 @@ interface StockMutationItem {
 }
 
 export default function StockPage() {
-  const { user, hasRole } = useAuth();
+  const { user, can } = useAuth();
   const { success, error: toastError, warning } = useToast();
 
   const [activeTab, setActiveTab] = useState<'vaccines' | 'icv' | 'mutations'>('vaccines');
@@ -266,7 +266,7 @@ export default function StockPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {hasRole('Superadmin', 'Perawat') && (
+            {can('stok.tulis') && (
               <>
                 {activeTab === 'vaccines' && (
                   <button
@@ -376,7 +376,7 @@ export default function StockPage() {
                       <th className="py-3 px-4">Satuan</th>
                       <th className="py-3 px-4">Tgl Kadaluarsa</th>
                       <th className="py-3 px-4 text-center">Status</th>
-                      {hasRole('Superadmin') && <th className="py-3 px-4 text-center">Aksi</th>}
+                      {can('stok.hapus') && <th className="py-3 px-4 text-center">Aksi</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -406,7 +406,7 @@ export default function StockPage() {
                               {v.status}
                             </span>
                           </td>
-                          {hasRole('Superadmin') && (
+                          {can('stok.hapus') && (
                             <td className="py-3 px-4 text-center whitespace-nowrap">
                               <button
                                 onClick={() => setVaccineToDelete(v)}

@@ -30,7 +30,7 @@ interface GformConfig {
 }
 
 export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () => void }) {
-  const { user, hasRole } = useAuth();
+  const { user, can } = useAuth();
   const { success, error: toastError, info } = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -212,7 +212,7 @@ export default function SyncAndQrPanel({ onSyncSuccess }: { onSyncSuccess?: () =
                 <span>{loading ? 'Menarik Data...' : 'Tarik Data GForm'}</span>
               </button>
 
-              {hasRole('Superadmin', 'Perawat', 'Dokter') && (
+              {can('registrasi.kelola') && (
                 <button
                   type="button"
                   onClick={() => setIsConfigModalOpen(true)}

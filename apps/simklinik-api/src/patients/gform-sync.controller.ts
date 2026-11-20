@@ -1,8 +1,8 @@
 import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { GformSyncService } from './gform-sync.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard, RequirePermission } from '../auth/permissions.guard';
+import { PERMISSIONS } from '../auth/permissions';
 
 export class UpdateGformConfigDto {
   gformUrl?: string;
@@ -12,12 +12,12 @@ export class UpdateGformConfigDto {
 }
 
 @Controller('api/patients/sync')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class GformSyncController {
   constructor(private readonly syncService: GformSyncService) {}
 
   @Post()
-  @Roles('Superadmin', 'Perawat', 'Dokter')
+  @RequirePermission(PERMISSIONS.REGISTRASI_KELOLA)
   async manualSync() {
     const result = await this.syncService.syncPatientsFromSheet();
     return {
@@ -28,13 +28,13 @@ export class GformSyncController {
   }
 
   @Get('config')
-  @Roles('Superadmin', 'Perawat', 'Dokter')
+  @RequirePermission(PERMISSIONS.REGISTRASI_KELOLA)
   getConfig() {
     return this.syncService.getConfig();
   }
 
   @Post('config')
-  @Roles('Superadmin', 'Perawat', 'Dokter')
+  @RequirePermission(PERMISSIONS.REGISTRASI_KELOLA)
   updateConfig(@Body() dto: UpdateGformConfigDto) {
     return this.syncService.saveConfig(dto);
   }

@@ -3,6 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { DatabaseService, APP_CODES } from '../database/database.service';
 import { UserRole } from '../auth/jwt.strategy';
 import { CreateUserDto, UpdateUserDto } from './users.dto';
+import { PermissionsService } from '../permissions/permissions.service';
 
 interface UserRow {
   id: number;
@@ -15,7 +16,10 @@ interface UserRow {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   private appsOf(userId: number): string[] {
     return this.db
@@ -24,7 +28,7 @@ export class UsersService {
   }
 
   private present(row: UserRow) {
-    return { ...row, apps: this.appsOf(row.id) };
+    return { ...row, apps: this.appsOf(row.id), permissions: this.permissions.permissionsByApp(row.id) };
   }
 
   private assertAppCodes(codes: string[]) {
@@ -136,6 +140,16 @@ export class UsersService {
       );
     }
     this.syncAppAccess(id, appCodes, user.role);
+    return this.findOne(id);
+  }
+
+  setPermissions(id: number, appCode: string, permissions: string[]) {
+    this.assertAppCodes([appCode]);
+    const user = this.findOne(id);
+    if (user.role === 'Superadmin') {
+      throw new BadRequestException('Superadmin otomatis boleh memakai semua fitur; tidak perlu diatur.');
+    }
+    this.permissions.setUserPermissions(id, appCode, permissions);
     return this.findOne(id);
   }
 }

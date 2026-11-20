@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   KeyRound,
+  ListChecks,
 } from 'lucide-react';
 
 const ROLES: UserRole[] = ['Superadmin', 'Dokter', 'Perawat', 'Administrasi'];
@@ -29,6 +30,15 @@ interface ManagedUser {
   isActive: number;
   createdAt: string;
   apps: string[];
+  // Centang fitur per aplikasi, mis. { simklinik: ['mcu.tulis', ...] }.
+  permissions: Record<string, string[]>;
+}
+
+// Daftar fitur yang didaftarkan setiap aplikasi ke layanan identitas.
+interface AppCatalog {
+  appCode: string;
+  permissions: { code: string; label: string; group?: string; description?: string }[];
+  presets: { code: string; label: string; permissions: string[] }[];
 }
 
 interface UserForm {
@@ -38,6 +48,7 @@ interface UserForm {
   password: string;
   isActive: boolean;
   appCodes: string[];
+  permissions: Record<string, string[]>;
 }
 
 const emptyForm: UserForm = {
@@ -47,7 +58,12 @@ const emptyForm: UserForm = {
   password: '',
   isActive: true,
   appCodes: ['portal'],
+  permissions: {},
 };
+
+function sameSet(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((item) => b.includes(item));
+}
 
 export default function UsersPage() {
   const { token } = useAuth();
@@ -60,6 +76,8 @@ export default function UsersPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [catalogs, setCatalogs] = useState<Record<string, AppCatalog>>({});
+  const [appNames, setAppNames] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -79,6 +97,33 @@ export default function UsersPage() {
     load();
   }, [load]);
 
+  // Katalog fitur dimuat sekali. Aplikasi yang belum pernah dinyalakan belum
+  // mendaftarkan katalognya, dan cukup diatur aksesnya saja.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ data: { code: string; name: string }[] }>('/api/apps/all', { token })
+      .then((res) => setAppNames(Object.fromEntries(res.data.map((app) => [app.code, app.name]))))
+      .catch(() => setAppNames({}));
+    Promise.all(
+      APP_CODES.filter((code) => code !== 'portal').map((code) =>
+        apiFetch<AppCatalog>(`/api/apps/${code}/catalog`, { token }).catch(() => null)
+      )
+    ).then((list) => {
+      const next: Record<string, AppCatalog> = {};
+      for (const catalog of list) {
+        if (catalog && catalog.permissions.length > 0) next[catalog.appCode] = catalog;
+      }
+      setCatalogs(next);
+    });
+  }, [token]);
+
+  // Untuk akun baru, preset yang namanya sama dengan peran dipilih otomatis
+  // saat aplikasinya dicentang, agar Superadmin tidak mulai dari kosong.
+  const defaultPermissions = (appCode: string, role: UserRole): string[] => {
+    const preset = catalogs[appCode]?.presets.find((p) => p.code === role.toLowerCase());
+    return preset ? [...preset.permissions] : [];
+  };
+
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
@@ -97,18 +142,43 @@ export default function UsersPage() {
       password: '',
       isActive: user.isActive === 1,
       appCodes: user.apps,
+      permissions: user.permissions ?? {},
     });
     setFormError(null);
     setIsFormOpen(true);
   };
 
   const toggleApp = (code: string) => {
-    setForm((prev) => ({
-      ...prev,
-      appCodes: prev.appCodes.includes(code)
-        ? prev.appCodes.filter((item) => item !== code)
-        : [...prev.appCodes, code],
-    }));
+    setForm((prev) => {
+      const enabling = !prev.appCodes.includes(code);
+      const permissions = { ...prev.permissions };
+      if (enabling && !(permissions[code]?.length)) {
+        permissions[code] = defaultPermissions(code, prev.role);
+      }
+      return {
+        ...prev,
+        appCodes: enabling ? [...prev.appCodes, code] : prev.appCodes.filter((item) => item !== code),
+        permissions,
+      };
+    });
+  };
+
+  const setAppPermissions = (appCode: string, permissions: string[]) => {
+    setForm((prev) => ({ ...prev, permissions: { ...prev.permissions, [appCode]: permissions } }));
+  };
+
+  // Centang fitur dikirim untuk setiap aplikasi yang punya katalog dan
+  // dicentang aksesnya. Aplikasi yang aksesnya dicabut cukup ditutup aksesnya;
+  // centangnya disimpan agar tidak hilang bila akses diberikan lagi.
+  const savePermissions = async (userId: number) => {
+    for (const appCode of form.appCodes) {
+      if (!catalogs[appCode]) continue;
+      await apiFetch(`/api/users/${userId}/permissions`, {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({ appCode, permissions: form.permissions[appCode] ?? [] }),
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -154,10 +224,11 @@ export default function UsersPage() {
             token,
             body: JSON.stringify({ appCodes: form.appCodes }),
           });
+          await savePermissions(editing.id);
         }
         success(`Data ${form.fullName} berhasil diperbarui.`);
       } else {
-        await apiFetch('/api/users', {
+        const created = await apiFetch<ManagedUser>('/api/users', {
           method: 'POST',
           token,
           body: JSON.stringify({
@@ -168,6 +239,7 @@ export default function UsersPage() {
             appCodes: form.role === 'Superadmin' ? [] : form.appCodes,
           }),
         });
+        if (form.role !== 'Superadmin') await savePermissions(created.id);
         success(`Pengguna ${form.fullName} berhasil dibuat.`);
       }
       setIsFormOpen(false);
@@ -177,6 +249,13 @@ export default function UsersPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const appLabel = (code: string, user: ManagedUser) => {
+    const name = appNames[code] ?? code;
+    const catalog = catalogs[code];
+    if (!catalog) return name;
+    return `${name} (${(user.permissions?.[code] ?? []).length}/${catalog.permissions.length} fitur)`;
   };
 
   const roleBadge = (role: UserRole) => {
@@ -252,7 +331,9 @@ export default function UsersPage() {
                         ) : user.apps.length === 0 ? (
                           <span className="text-xs text-slate-400">Belum ada akses</span>
                         ) : (
-                          <span className="text-xs text-slate-600">{user.apps.join(', ')}</span>
+                          <span className="text-xs text-slate-600">
+                            {user.apps.map((code) => appLabel(code, user)).join(', ')}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -292,7 +373,9 @@ export default function UsersPage() {
                       <p className="text-xs text-slate-500 mt-0.5">@{user.username}</p>
                       <div className="mt-1.5">{roleBadge(user.role)}</div>
                       <p className="text-xs text-slate-500 mt-1.5">
-                        {user.role === 'Superadmin' ? 'Semua aplikasi' : user.apps.join(', ') || 'Belum ada akses'}
+                        {user.role === 'Superadmin'
+                          ? 'Semua aplikasi'
+                          : user.apps.map((code) => appLabel(code, user)).join(', ') || 'Belum ada akses'}
                         {user.isActive === 0 && ' · Nonaktif'}
                       </p>
                     </div>
@@ -431,12 +514,25 @@ export default function UsersPage() {
                             onChange={() => toggleApp(code)}
                             className="rounded border-slate-300 text-portal-600 focus:ring-portal-500"
                           />
-                          <span className="font-medium">{code}</span>
+                          <span className="font-medium">{appNames[code] ?? code}</span>
                         </label>
                       ))}
                     </div>
                   )}
                 </div>
+
+                {form.role !== 'Superadmin' &&
+                  form.appCodes
+                    .filter((code) => catalogs[code])
+                    .map((code) => (
+                      <PermissionEditor
+                        key={code}
+                        appName={appNames[code] ?? code}
+                        catalog={catalogs[code]}
+                        selected={form.permissions[code] ?? []}
+                        onChange={(next) => setAppPermissions(code, next)}
+                      />
+                    ))}
 
                 {editing && (
                   <div className="sm:col-span-2">
@@ -477,5 +573,89 @@ export default function UsersPage() {
         </div>
       )}
     </PortalShell>
+  );
+}
+
+// Centang fitur satu aplikasi. Preset hanya mengisi centang; setelah itu
+// Superadmin tetap bebas menambah atau mengurangi per orang.
+function PermissionEditor({
+  appName,
+  catalog,
+  selected,
+  onChange,
+}: {
+  appName: string;
+  catalog: AppCatalog;
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const matchedPreset = catalog.presets.find((preset) => sameSet(preset.permissions, selected));
+  const groups = catalog.permissions.reduce<Record<string, AppCatalog['permissions']>>((acc, permission) => {
+    (acc[permission.group ?? 'Lainnya'] ??= []).push(permission);
+    return acc;
+  }, {});
+
+  const toggle = (code: string) =>
+    onChange(selected.includes(code) ? selected.filter((item) => item !== code) : [...selected, code]);
+
+  return (
+    <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <span className="flex items-center gap-2 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+          <ListChecks className="w-3.5 h-3.5" />
+          Fitur {appName}
+        </span>
+        <select
+          value={matchedPreset?.code ?? ''}
+          onChange={(e) => {
+            const preset = catalog.presets.find((p) => p.code === e.target.value);
+            if (preset) onChange([...preset.permissions]);
+          }}
+          aria-label={`Preset fitur ${appName}`}
+          className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-portal-600"
+        >
+          <option value="" disabled>
+            Kustom
+          </option>
+          {catalog.presets.map((preset) => (
+            <option key={preset.code} value={preset.code}>
+              Preset: {preset.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-3">
+        {Object.entries(groups).map(([group, permissions]) => (
+          <div key={group}>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{group}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {permissions.map((permission) => (
+                <label
+                  key={permission.code}
+                  className="flex items-start gap-2 px-2.5 py-2 rounded-md bg-white border border-slate-200 text-sm text-slate-700 cursor-pointer hover:border-portal-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(permission.code)}
+                    onChange={() => toggle(permission.code)}
+                    className="mt-0.5 rounded border-slate-300 text-portal-600 focus:ring-portal-500"
+                  />
+                  <span>
+                    {permission.label}
+                    {permission.description && (
+                      <span className="block text-xs text-slate-500">{permission.description}</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 mt-2">
+        Melihat data selalu boleh bagi yang punya akses aplikasi ini. Perubahan berlaku paling lambat 30 detik.
+      </p>
+    </div>
   );
 }

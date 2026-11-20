@@ -10,7 +10,8 @@
     "start": "ts-node src/main.ts",
     "start:dev": "ts-node src/main.ts",
     "start:prod": "node dist/main.js",
-    "link:identity": "ts-node src/scripts/link-identity.ts"
+    "link:identity": "ts-node src/scripts/link-identity.ts",
+    "migrasi:hak-akses": "ts-node src/scripts/migrasi-hak-akses.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

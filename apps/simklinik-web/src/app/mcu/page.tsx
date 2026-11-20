@@ -344,7 +344,7 @@ const PDF_LAYOUT = {
 };
 
 export default function McuPage() {
-  const { user, hasRole } = useAuth();
+  const { user, can } = useAuth();
   const { success, error: toastError } = useToast();
 
   const [reports, setReports] = useState<McuReportItem[]>([]);
@@ -962,7 +962,7 @@ export default function McuPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {hasRole('Superadmin', 'Dokter') && (
+            {can('mcu.tulis') && (
               <button
                 type="button"
                 onClick={handleOpenNew}
@@ -1060,7 +1060,7 @@ export default function McuPage() {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          {hasRole('Superadmin', 'Dokter') && (
+                          {can('mcu.hapus') && (
                             <button
                               type="button"
                               onClick={() => setReportToDelete(r)}
