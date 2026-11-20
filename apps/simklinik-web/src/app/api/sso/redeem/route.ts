@@ -9,8 +9,11 @@
 //
 // Alur lengkapnya:
 //   halaman /sso -> route ini -> server portal (tukar tiket) -> token SIMKlinik
-//   lalu profil diambil dari layanan identitas, karena akun staf sekarang hidup
-//   di sana, bukan di tabel users SIMKlinik yang lama.
+//   lalu profil diambil dari backend SIMKlinik. Id dan peran di layanan
+//   identitas tidak sama dengan tabel users SIMKlinik, dan halaman SIMKlinik
+//   memakai id serta peran milik SIMKlinik. Backend juga menolak token bila
+//   username portal tidak terdaftar di SIMKlinik, sehingga kegagalan itu
+//   terlihat di sini, bukan di halaman pertama setelah login.
 //
 // Service key dibaca langsung dari file yang ditulis `npm run generate-key`.
 // Tidak ada penyalinan kunci ke variabel lingkungan: satu sumber kebenaran
@@ -26,8 +29,8 @@ function portalUrl(): string {
   return process.env.PORTAL_URL || 'http://127.0.0.1:8082';
 }
 
-function identityUrl(): string {
-  return process.env.IDENTITY_SERVICE_URL || `http://127.0.0.1:${process.env.IDENTITY_PORT || '4010'}`;
+function backendUrl(): string {
+  return `http://127.0.0.1:${process.env.BACKEND_PORT || '4000'}`;
 }
 
 // Penanda mode: keberadaan .env.local (dibuat runner untuk mode development)
@@ -102,16 +105,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let user: unknown = null;
+  let user: unknown;
   try {
-    const res = await fetch(`${identityUrl()}/api/auth/me`, {
+    const res = await fetch(`${backendUrl()}/api/auth/profile`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(5000),
     });
-    if (res.ok) user = await res.json();
+    if (!res.ok) {
+      return NextResponse.json({ message: await errorMessage(res) }, { status: res.status });
+    }
+    user = await res.json();
   } catch {
-    // Profil opsional di sini: halaman /sso memuatnya ulang dari storage dan
-    // token tetap tersimpan, sehingga sesi tidak hilang karena ini saja.
+    return NextResponse.json(
+      { message: 'Backend SIMKlinik tidak dapat dihubungi. Pastikan SIMKlinik sedang berjalan.' },
+      { status: 503 }
+    );
   }
 
   return NextResponse.json({ accessToken, user, portalUrl: portalUrl() });
