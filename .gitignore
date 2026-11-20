@@ -41,6 +41,7 @@ out/
 # MCU berisi nama pasien ikut ter-commit dan ter-push ke repositori publik.
 # Negasi semacam itu tidak boleh dikembalikan.
 *.xlsx
+*.xls
 *.pdf
 *.docx
 *.doc
