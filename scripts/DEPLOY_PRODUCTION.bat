@@ -9,13 +9,15 @@ echo ====================================================================
 echo   DEPLOY PRODUCTION SISTEM KLINIK
 echo ====================================================================
 echo   Langkah yang dijalankan:
-echo     1. Hentikan production yang sedang berjalan (8080 / 8082 / 4000 / 4010)
+echo     1. Hentikan production yang sedang berjalan (8080 / 8082 / 8084 / 4000 / 4002 / 4010)
 echo     2. Cadangkan database production ke data\backups\
 echo     3. Build layanan identitas  (services\identity)
 echo     4. Build portal             (apps\portal)
 echo     5. Build backend SIMKlinik  (apps\simklinik-api\dist)
 echo     6. Build frontend SIMKlinik (apps\simklinik-web\.next)
-echo     7. Jalankan ulang seluruh sistem
+echo     7. Build backend surat      (apps\surat-laporan\api\dist)
+echo     8. Build frontend surat     (apps\surat-laporan\web\.next)
+echo     9. Jalankan ulang seluruh sistem
 echo.
 echo   PERHATIAN: seluruh web MATI selama build (perkiraan 3-5 menit).
 echo   Jalankan saat klinik sedang sepi.
@@ -28,13 +30,13 @@ if /i not "%LANJUT%"=="YA" (
 )
 
 echo.
-echo [1/7] Menghentikan seluruh layanan...
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8080,8082,4000,4010 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
+echo [1/9] Menghentikan seluruh layanan...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8080,8082,8084,4000,4002,4010 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
 timeout /t 2 /nobreak >nul
-echo       [OK] Port 8080, 8082, 4000, dan 4010 dibebaskan.
+echo       [OK] Port 8080, 8082, 8084, 4000, 4002, dan 4010 dibebaskan.
 
 echo.
-echo [2/7] Mencadangkan database production...
+echo [2/9] Mencadangkan database production...
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set STAMP=%%I
 if not exist "data\backups" mkdir "data\backups"
 if exist "data\simklinik\vaksinku.sqlite" (
@@ -55,9 +57,18 @@ if exist "data\identity\identity.sqlite" (
 ) else (
   echo       [INFO] Database identitas belum ada; tidak ada yang dicadangkan.
 )
+REM Database sistem surat: arsip surat, template, kop, dan penomoran.
+if exist "data\surat\surat.sqlite" (
+  copy /Y "data\surat\surat.sqlite" "data\backups\surat-%STAMP%.sqlite" >nul
+  if exist "data\surat\surat.sqlite-wal" copy /Y "data\surat\surat.sqlite-wal" "data\backups\surat-%STAMP%.sqlite-wal" >nul
+  if exist "data\surat\surat.sqlite-shm" copy /Y "data\surat\surat.sqlite-shm" "data\backups\surat-%STAMP%.sqlite-shm" >nul
+  echo       [OK] Backup sistem surat: data\backups\surat-%STAMP%.sqlite
+) else (
+  echo       [INFO] Database sistem surat belum ada; tidak ada yang dicadangkan.
+)
 
 echo.
-echo [3/7] Build layanan identitas...
+echo [3/9] Build layanan identitas...
 cd /d "%ROOT%\services\identity"
 if exist "dist" rmdir /S /Q "dist"
 call npm run build
@@ -65,7 +76,7 @@ if errorlevel 1 goto gagal
 echo       [OK] Layanan identitas berhasil di-build.
 
 echo.
-echo [4/7] Build portal...
+echo [4/9] Build portal...
 cd /d "%ROOT%\apps\portal"
 if exist ".next" rmdir /S /Q ".next"
 call npm run build
@@ -73,7 +84,7 @@ if errorlevel 1 goto gagal
 echo       [OK] Portal berhasil di-build.
 
 echo.
-echo [5/7] Build backend SIMKlinik (bersih, tanpa cache incremental)...
+echo [5/9] Build backend SIMKlinik (bersih, tanpa cache incremental)...
 cd /d "%ROOT%\apps\simklinik-api"
 if exist "dist" rmdir /S /Q "dist"
 call npm run build
@@ -81,15 +92,33 @@ if errorlevel 1 goto gagal
 echo       [OK] Backend berhasil di-build.
 
 echo.
-echo [6/7] Build frontend SIMKlinik...
+echo [6/9] Build frontend SIMKlinik...
 cd /d "%ROOT%\apps\simklinik-web"
 call npm run build
 if errorlevel 1 goto gagal
 echo       [OK] Frontend berhasil di-build.
 
+echo.
+echo [7/9] Build backend sistem surat (bersih)...
+cd /d "%ROOT%\apps\surat-laporan\api"
+if not exist "node_modules" call npm install
+if exist "dist" rmdir /S /Q "dist"
+call npm run build
+if errorlevel 1 goto gagal
+echo       [OK] Backend sistem surat berhasil di-build.
+
+echo.
+echo [8/9] Build frontend sistem surat...
+cd /d "%ROOT%\apps\surat-laporan\web"
+if not exist "node_modules" call npm install
+if exist ".next" rmdir /S /Q ".next"
+call npm run build
+if errorlevel 1 goto gagal
+echo       [OK] Frontend sistem surat berhasil di-build.
+
 cd /d "%ROOT%"
 echo.
-echo [7/7] Menjalankan seluruh sistem...
+echo [9/9] Menjalankan seluruh sistem...
 echo.
 node runner.js
 if %errorlevel% neq 0 (

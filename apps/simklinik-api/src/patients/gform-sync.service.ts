@@ -65,7 +65,7 @@ export class GformSyncService {
     const isScript = spId.includes('script.google.com');
 
     return {
-      gformUrl: getVal('gform_url', 'https://forms.gle/UQbvWGhwFHSknGkv5'),
+      gformUrl: getVal('gform_url', 'https://forms.gle/rV82CynyfUR14eV39'),
       spreadsheetId: spId,
       sheetName: getVal('gform_sheet_name', 'Form Responses 1'),
       syncEnabled: getVal('gform_sync_enabled', 'true') === 'true',
@@ -192,13 +192,26 @@ export class GformSyncService {
     return { birthPlace: birthPlace || 'Cianjur', birthDate };
   }
 
-  private parsePlannedDate(dStr: string): string {
+  // Google Sheets menulis tanggal sesuai locale spreadsheet: en_US memakai
+  // bulan/tanggal/tahun, id_ID memakai tanggal/bulan/tahun.
+  private parsePlannedDate(dStr: string, monthFirst = false): string {
     if (!dStr) return new Date().toISOString().split('T')[0];
-    const m = dStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    const m = dStr.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
     if (m) {
-      return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      const [day, month] = monthFirst ? [m[2], m[1]] : [m[1], m[2]];
+      return `${m[3]}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
     return dStr.trim();
+  }
+
+  private async isMonthFirstLocale(spreadsheetId: string): Promise<boolean> {
+    try {
+      const meta = await this.sheets!.spreadsheets.get({ spreadsheetId, fields: 'properties.locale' });
+      const locale = meta.data.properties?.locale || '';
+      return locale === 'en_US' || locale === 'en_PH' || locale === 'fil_PH';
+    } catch {
+      return false;
+    }
   }
 
   async syncPatientsFromSheet(): Promise<{ addedCount: number; message: string; configured: boolean }> {
@@ -238,6 +251,7 @@ export class GformSyncService {
       this.logger.log(`Memulai penarikan data Google Sheets ID: ${config.spreadsheetId} (${sheetName})...`);
 
       let rows: unknown[][];
+      let monthFirst = false;
 
       if (isScriptUrl) {
         const fetchRes = await fetch(config.spreadsheetId, { redirect: 'follow' });
@@ -251,6 +265,7 @@ export class GformSyncService {
           range: `'${sheetName}'!A1:Z`,
         });
         rows = (response.data.values || []) as unknown[][];
+        monthFirst = await this.isMonthFirstLocale(config.spreadsheetId);
       }
 
       if (!rows || rows.length <= 1) {
@@ -330,10 +345,13 @@ export class GformSyncService {
           continue;
         }
 
-        // Jika ada nama namun NIK kosong di Google Sheets, buatkan ID pengganti otomatis
+        // Jika ada nama namun NIK kosong di Google Sheets, buatkan ID pengganti
+        // dari timestamp jawaban agar baris yang sama selalu menghasilkan ID yang sama.
         if (!rawNik && rawNama) {
-          rawNik = `GEN${Date.now().toString().slice(-13)}`;
+          const stampDigits = (row[0] ? row[0].toString() : '').replace(/\D/g, '');
+          rawNik = `GEN${(stampDigits || String(i + 1)).padStart(13, '0').slice(-13)}`;
         }
+        const storedNik = rawNik.padEnd(16, '0').substring(0, 16);
 
         const cleanNama = rawNama || 'Pasien Tanpa Nama';
         const rawPassport = colPassport !== -1 && row[colPassport] ? row[colPassport].toString().trim() : '';
@@ -352,22 +370,24 @@ export class GformSyncService {
 
         const rowNumber = i + 1;
 
-        // Idempotensi: Cek apakah data pasien ini sudah ada di database lokal
-        const existing = this.db.get<{ id: number; fullName: string }>(
-          `SELECT id, fullName FROM vaccination_records
-           WHERE nik = ? AND (plannedDate = ? OR SUBSTR(createdAt, 1, 10) = ?)`,
-          [rawNik, todayStr, todayStr]
-        );
-
-        // Jika di sheet sudah TERSIMPAN dan datanya memang sudah tercatat di DB -> lewati
-        if (currentSync.startsWith('TERSIMPAN') && existing) {
+        // Baris yang sudah ditandai TERSIMPAN sudah pernah diimpor. Jangan diimpor
+        // lagi walaupun datanya sudah dihapus dari aplikasi.
+        if (currentSync.toUpperCase().startsWith('TERSIMPAN')) {
           continue;
         }
 
-        // Jika data sudah tercatat di DB namun di sheet belum TERSIMPAN -> tandai TERSIMPAN (DUPLIKAT)
+        const plannedDate = this.parsePlannedDate(rawTglKunjungan, monthFirst) || todayStr;
+
+        // Idempotensi: NIK yang sama dengan rencana kunjungan yang sama dianggap
+        // pendaftaran yang sama (mis. penandaan TERSIMPAN sebelumnya gagal ditulis).
+        const existing = this.db.get<{ id: number; fullName: string }>(
+          `SELECT id, fullName FROM vaccination_records WHERE nik = ? AND plannedDate = ?`,
+          [storedNik, plannedDate]
+        );
+
         if (existing) {
           await this.markRowSync(config.spreadsheetId, sheetName, colSyncLetter, rowNumber, colSync + 1, 'TERSIMPAN (DUPLIKAT)');
-          this.logger.log(`Data dilewati karena sudah terdaftar hari ini (Duplikat): ${cleanNama} (${rawNik})`);
+          this.logger.log(`Data dilewati karena sudah terdaftar (Duplikat): ${cleanNama} (${storedNik})`);
           continue;
         }
 
@@ -383,7 +403,6 @@ export class GformSyncService {
         const { birthPlace, birthDate } = this.parseTtlAdvanced(rawTtl, rawNik);
 
         // Parse Jadwal Kunjungan
-        const plannedDate = this.parsePlannedDate(rawTglKunjungan) || todayStr;
         let plannedTime = rawJamKunjungan || nowTimeStr;
         if (!plannedTime.includes('WIB')) plannedTime += ' WIB';
 
@@ -417,7 +436,7 @@ export class GformSyncService {
             notes, infoSource, icvNumber, monthYear, pregnancyTestResult, batchNumber
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            rawNik.padEnd(16, '0').substring(0, 16),
+            storedNik,
             cleanNama,
             gender,
             birthPlace,

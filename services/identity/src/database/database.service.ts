@@ -59,6 +59,26 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.db;
   }
 
+  /**
+   * Aplikasi yang boleh dibuka seorang pengguna.
+   *
+   * Superadmin selalu boleh membuka semua aplikasi, dan akses itu sengaja
+   * tidak disimpan di app_access (lihat UsersService.syncAppAccess). Dulu
+   * pemeriksaan login hanya membaca app_access, sehingga Superadmin yang baru
+   * dibuat — atau pengguna yang diubah menjadi Superadmin — ditolak masuk
+   * portal sampai layanan identitas dijalankan ulang. Semua pemeriksaan akses
+   * kini lewat fungsi ini.
+   */
+  appsForUser(userId: number, role: string): string[] {
+    if (role === 'Superadmin') {
+      const registered = this.query<{ code: string }>('SELECT code FROM app_registry').map((r) => r.code);
+      return [...new Set<string>([...APP_CODES, ...registered])];
+    }
+    return this.query<{ appCode: string }>('SELECT appCode FROM app_access WHERE userId = ? AND isActive = 1', [userId]).map(
+      (row) => row.appCode
+    );
+  }
+
   query<T = Record<string, unknown>>(sql: string, params: SqliteParam[] = []): T[] {
     const stmt = this.db.prepare(sql);
     return stmt.all(...params) as unknown as T[];
@@ -240,7 +260,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           'surat',
           `Sistem Surat${devSuffix}`,
           'Template surat, surat keluar bermuatan pasien, dan surat internal',
-          this.devMode ? 'http://localhost:8085' : 'http://localhost:8083',
+          this.devMode ? 'http://localhost:8085' : 'http://localhost:8084',
           this.devMode ? 'http://localhost:4003' : 'http://localhost:4002',
           2,
         ],
@@ -253,6 +273,18 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         );
       }
       this.logger.log('Seeding daftar aplikasi berhasil.');
+    }
+
+    // Seed lama mencatat sistem surat production di port 8083, padahal itu
+    // port portal dev; sistem surat production ada di 8084 (config/ports.js).
+    // Hanya baris dengan alamat bawaan lama yang diperbaiki: alamat yang sudah
+    // diubah Superadmin lewat menu Aplikasi tidak disentuh.
+    if (!this.devMode) {
+      const fixed = this.run(
+        `UPDATE app_registry SET frontendUrl = 'http://localhost:8084', updatedAt = CURRENT_TIMESTAMP
+         WHERE code = 'surat' AND frontendUrl = 'http://localhost:8083'`
+      );
+      if (Number(fixed.changes ?? 0) > 0) this.logger.log('Alamat Sistem Surat diperbaiki: localhost:8083 -> localhost:8084.');
     }
 
     // Akun staf yang sudah ada saat portal pertama kali diberlakukan

@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { issueTicket, TICKET_TTL_MS } from '@/lib/sso-tickets';
 import { identityUrl, serviceKeyOf } from '@/lib/service-keys';
+import { browserFacingUrl } from '@/lib/browser-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,11 +85,16 @@ export async function POST(request: NextRequest) {
   // Halaman /sso di aplikasi tujuan menukar tiket ini menjadi token. Token
   // tidak pernah muncul di URL, jadi riwayat browser dan log akses server
   // tetap bersih meski tautannya tersalin ke mana-mana.
-  const separator = target.frontendUrl.includes('?') ? '&' : '?';
+  //
+  // localhost di daftar aplikasi diganti alamat yang dipakai browser staf
+  // untuk membuka portal, agar tombol Buka juga berfungsi dari PC lain di
+  // jaringan klinik (lihat lib/browser-url.ts).
+  const frontendUrl = browserFacingUrl(target.frontendUrl, request);
+  const separator = frontendUrl.includes('?') ? '&' : '?';
   return NextResponse.json({
     ticket,
     appName: target.name,
-    redirectUrl: `${target.frontendUrl.replace(/\/$/, '')}/sso${separator}sso_ticket=${ticket}`,
+    redirectUrl: `${frontendUrl.replace(/\/$/, '')}/sso${separator}sso_ticket=${ticket}`,
   });
 }
 

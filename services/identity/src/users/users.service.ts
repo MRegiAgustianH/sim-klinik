@@ -21,14 +21,9 @@ export class UsersService {
     private readonly permissions: PermissionsService,
   ) {}
 
-  private appsOf(userId: number): string[] {
-    return this.db
-      .query<{ appCode: string }>('SELECT appCode FROM app_access WHERE userId = ? AND isActive = 1', [userId])
-      .map((row) => row.appCode);
-  }
 
   private present(row: UserRow) {
-    return { ...row, apps: this.appsOf(row.id), permissions: this.permissions.permissionsByApp(row.id) };
+    return { ...row, apps: this.db.appsForUser(row.id, row.role), permissions: this.permissions.permissionsByApp(row.id) };
   }
 
   private assertAppCodes(codes: string[]) {

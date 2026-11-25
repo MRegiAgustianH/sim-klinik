@@ -47,7 +47,7 @@ sim-klinik/
 │  ├─ portal/                 Next.js :8082 — login, kartu aplikasi, pasien, pengguna
 │  ├─ simklinik-web/          Next.js :8080 — frontend vaksinasi, ICV, MCU, stok
 │  ├─ simklinik-api/          NestJS  :4000 — REST API, PDF, Excel, sinkron Google Form
-│  └─ surat-laporan/          (belum dikerjakan)
+│  └─ surat-laporan/          Sistem surat: web Next.js :8084, api NestJS :4002
 ├─ services/
 │  └─ identity/               NestJS  :4010 — pengguna, data induk pasien, token SSO
 │
@@ -98,10 +98,11 @@ Penanda mode adalah file `.env.local` di `apps/simklinik-api/` dan `services/ide
 
 | Perintah | Yang dinyalakan |
 | :--- | :--- |
-| `node runner.js` | identitas + portal + SIMKlinik (production) |
+| `node runner.js` | identitas + portal + SIMKlinik + sistem surat (production) |
 | `node runner.js --dev` | sama, mode development |
 | `node runner.js --only=simklinik` | identitas + SIMKlinik |
 | `node runner.js --only=portal` | identitas + portal |
+| `node runner.js --only=surat` | identitas + sistem surat |
 
 Port semua aplikasi diatur di `config/ports.js`. Runner meneruskan port dan `KLINIK_ROOT` (root repo) ke setiap proses, sehingga lokasi `data/`, `secrets/`, dan `assets/` tidak bergantung pada folder tempat aplikasi dijalankan.
 
@@ -149,6 +150,7 @@ Backend membaca satu file: `secrets\google-credentials.json` (bisa diganti lewat
 | :--- | :--- |
 | [docs/SETUP.md](docs/SETUP.md) | Pemasangan di komputer server baru |
 | [docs/arsitektur-integrasi.md](docs/arsitektur-integrasi.md) | Rancangan portal, identitas pasien, menambah app baru, app surat & laporan |
+| [apps/surat-laporan/README.md](apps/surat-laporan/README.md) | Sistem surat: template, kop, penomoran, hak akses, variabel |
 | [docs/portal-dan-sso.md](docs/portal-dan-sso.md) | Cara kerja portal, SSO, service key, impor pasien |
 | [services/identity/README.md](services/identity/README.md) | Endpoint dan skrip layanan identitas |
 | [docs/panduan-vaksinku.md](docs/panduan-vaksinku.md) | Panduan langkah demi langkah pemakaian aplikasi |

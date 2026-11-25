@@ -1,0 +1,27 @@
+/* SuratPro v4.0 — gaya isi surat untuk halaman lihat & cetak: bungkus konten dengan <div class="sp-doc"> (otomatis dari getCleanHTML()) */
+.sp-doc{display:flex;flex-direction:column;align-items:stretch}
+.sp-doc>*{min-width:0;flex-shrink:0}
+.sp-doc{font-kerning:none;font-variant-ligatures:none;color:#000;word-wrap:break-word;overflow-wrap:break-word;text-rendering:optimizeLegibility}
+.sp-doc p,.sp-doc div,.sp-doc li,.sp-doc h1,.sp-doc h2,.sp-doc h3,.sp-doc h4,.sp-doc h5,.sp-doc h6,.sp-doc blockquote,.sp-doc pre{margin:0}
+.sp-doc h1{font-size:16pt;font-weight:bold;margin-top:12pt}
+.sp-doc h2{font-size:13pt;font-weight:bold;margin-top:2pt}
+.sp-doc h3{font-size:12pt;font-weight:bold;margin-top:2pt}
+.sp-doc ol,.sp-doc ul{margin:0;padding-left:1.27cm}
+.sp-doc ol ol,.sp-doc ul ul,.sp-doc ol ul,.sp-doc ul ol{padding-left:1.27cm}
+.sp-doc li{margin:0;padding-left:0}
+.sp-doc table{border-collapse:collapse;border-spacing:0}
+.sp-doc td,.sp-doc th{vertical-align:top}
+.sp-doc td>p,.sp-doc th>p{margin:0}
+.sp-doc img{max-width:100%;height:auto}
+.sp-doc hr{border:none;border-top:1px solid #000;margin:6pt 0}
+.sp-doc a{color:#0563c1;text-decoration:underline}
+.sp-doc .sp-tab{display:inline-block;white-space:pre;tab-size:1;text-indent:0;vertical-align:baseline;min-width:1px}
+.sp-doc .sp-tab[data-lead=dot]{background:radial-gradient(circle,currentColor 0 .7px,transparent 1px) 0 82%/4px 3px repeat-x}
+.sp-doc .sp-tab[data-lead=dash]{background:linear-gradient(90deg,currentColor 0 3px,transparent 3px) 0 82%/6px 1px repeat-x}
+.sp-doc .sp-tab[data-lead=line]{background:linear-gradient(currentColor,currentColor) 0 84%/100% 1px no-repeat}
+.sp-doc .sp-img-wrap{display:block;margin:4pt 0}
+.sp-doc .sp-img-wrap img{display:inline-block;vertical-align:top}
+.sp-doc .sp-img-caption{font-size:10pt;font-style:italic;text-align:center;margin-top:3pt}
+.sp-doc .sp-pagebreak{break-after:page;page-break-after:always;height:0;overflow:hidden}
+.sp-doc table.sp-nob td,.sp-doc table.sp-nob th{border-color:transparent!important}
+@media print{.sp-doc p,.sp-doc li,.sp-doc tr,.sp-doc .sp-img-wrap{break-inside:avoid;page-break-inside:avoid}}

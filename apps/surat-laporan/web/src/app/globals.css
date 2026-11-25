@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn bg-teal-600 border-teal-600 text-white hover:bg-teal-700 hover:border-teal-700;
+  }
+  .btn-secondary {
+    @apply btn bg-white border-slate-300 text-slate-700 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn bg-white border-rose-200 text-rose-700 hover:bg-rose-50;
+  }
+  .btn-ghost {
+    @apply btn border-transparent text-slate-600 hover:bg-slate-100;
+  }
+  .btn-sm {
+    @apply h-8 px-2.5 text-xs;
+  }
+  .input {
+    @apply w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20;
+  }
+  textarea.input {
+    @apply h-auto py-2;
+  }
+  .label {
+    @apply block text-xs font-semibold text-slate-600 mb-1;
+  }
+  .card {
+    @apply bg-white border border-slate-200 rounded-xl;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid #01b9ad;
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Editor SuratPro di dalam aplikasi
+ * Editor mengisi tinggi panel; garis tepi editor disatukan dengan panel.
+ * ------------------------------------------------------------------------- */
+.surat-editor-host > .sp-wrap {
+  height: 100% !important;
+  border-radius: 0;
+  border: none;
+}
+
+/* Penanda variabel hanya diberi warna di layar (editor & pratinjau), tidak
+   saat dicetak: cetak memakai iframe dengan CSS sendiri. */
+.sp-editor [data-var],
+.surat-preview [data-var] {
+  background: rgba(1, 185, 173, 0.1);
+  box-shadow: inset 0 -1px 0 rgba(1, 133, 124, 0.55);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.sp-editor div[data-var],
+.surat-preview div[data-var] {
+  box-shadow: none;
+  outline: 1px dashed rgba(1, 133, 124, 0.6);
+  outline-offset: 2px;
+}
+.sp-editor [data-var]:empty::before,
+.surat-preview [data-var]:empty::before {
+  content: '[' attr(data-label) ']';
+  color: #b45309;
+  background: #fef3c7;
+  font-style: italic;
+}
+.sp-editor [data-var].var-focus,
+.surat-preview [data-var].var-focus {
+  background: rgba(1, 185, 173, 0.28);
+}
+
+/* Lembar kertas untuk surat terbit / pratinjau template. */
+.surat-preview .sp-doc {
+  color: #000;
+}
+.paper-stage {
+  background: #eceae6;
+}

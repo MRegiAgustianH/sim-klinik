@@ -44,7 +44,7 @@ export class AuthService {
       throw new UnauthorizedException('Username atau password salah.');
     }
 
-    const apps = this.getActiveApps(user.id);
+    const apps = this.db.appsForUser(user.id, user.role);
 
     // Portal berisi data pasien, jadi membuka portal pun butuh akses eksplisit.
     // Sebelumnya 'portal' selalu diloloskan dan akun tanpa akses apa pun tetap
@@ -75,13 +75,6 @@ export class AuthService {
     };
   }
 
-  getActiveApps(userId: number): string[] {
-    return this.db
-      .query<{ appCode: string }>('SELECT appCode FROM app_access WHERE userId = ? AND isActive = 1', [
-        userId,
-      ])
-      .map((row) => row.appCode);
-  }
 
   // Dipanggil backend app lain (dengan service key) untuk memverifikasi token
   // yang dibawa pengguna. Bila audience tidak diisi, token apa pun milik app itu
@@ -108,7 +101,7 @@ export class AuthService {
       throw new UnauthorizedException('Pengguna tidak valid atau akun telah dinonaktifkan.');
     }
 
-    const apps = this.getActiveApps(user.id);
+    const apps = this.db.appsForUser(user.id, user.role);
 
     return {
       valid: true,
@@ -170,7 +163,7 @@ export class AuthService {
     if (!detail) {
       throw new UnauthorizedException('Pengguna tidak ditemukan.');
     }
-    return { ...detail, apps: this.getActiveApps(user.id) };
+    return { ...detail, apps: this.db.appsForUser(detail.id, detail.role) };
   }
 
   async changePassword(user: AuthUser, dto: ChangePasswordDto) {

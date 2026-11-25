@@ -601,7 +601,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!settingsCount || settingsCount.count === 0) {
       this.run(`INSERT OR IGNORE INTO app_settings (key, value, description) VALUES (?, ?, ?)`, [
         'gform_url',
-        'https://forms.gle/UQbvWGhwFHSknGkv5',
+        'https://forms.gle/rV82CynyfUR14eV39',
         'URL Formulir Pendaftaran Mandiri Google Form',
       ]);
       this.run(`INSERT OR IGNORE INTO app_settings (key, value, description) VALUES (?, ?, ?)`, [

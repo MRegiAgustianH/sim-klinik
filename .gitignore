@@ -69,3 +69,4 @@ ehthumbs.db
 # Hanya berkas ini (di assets/ dan apps/simklinik-web/public/). Jangan menambah
 # pola "!*.jpeg" / "!*.png" karena akan membuka semua gambar, termasuk hasil pindai dokumen pasien.
 !header-hasil.jpeg
+!assets/kop-formulir.jpeg

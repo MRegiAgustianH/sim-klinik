@@ -2,7 +2,7 @@
 
 Portal (`apps/portal/`) bersama layanan identitas (`services/identity/`) adalah **pintu masuk tunggal** ke semua aplikasi klinik: satu akun untuk semua aplikasi, satu data induk pasien, dan satu tempat melihat aplikasi mana yang sedang berjalan.
 
-**Status:** identity service dan portal dashboard **sudah jalan**. Impor pasien lama siap dijalankan; migrasi `patientId` di SIMKlinik dan sistem surat & laporan belum dikerjakan (lihat bagian 7).
+**Status:** identity service, portal dashboard, dan sistem surat (`apps/surat-laporan/`, lihat README-nya) **sudah jalan**. Impor pasien lama siap dijalankan; migrasi `patientId` di SIMKlinik belum dikerjakan (lihat bagian 7).
 
 ## 0. Menjalankan portal
 
@@ -47,7 +47,7 @@ Rekomendasi: **mulai dari SSO**, integrasi database menyusul per domain. Yang be
         │ vaksinku.sqlite       │   │ patients, users, app_akses│
         └───────────────────────┘   └──────────────────────────┘
         ┌───────────────────────┐            ▲
-        │ Surat & Laporan :8084 │────────────┘   (belum dikerjakan)
+        │ Sistem Surat   :8084  │────────────┘   (api :4002, data/surat/)
         └───────────────────────┘
 ```
 
@@ -153,8 +153,8 @@ Daftar variabel yang tersedia dibatasi per kategori: `{{nama_pasien}}`, `{{nik}}
 | 2 | Portal dashboard + SSO (port 8082) | 1 | **Selesai** |
 | 3 | Impor pasien lama per NIK | 1 | **Siap dijalankan** (`npm run import:patients`) |
 | 4 | Migrasi `patientId` di SIMKlinik (uji di mode dev) | 1, 3 | Belum |
-| 5 | App surat & laporan: template + surat internal (tidak menunggu 3–4) | 1 | Belum |
-| 6 | App surat & laporan: surat keluar bermuatan pasien | 4 | Belum |
+| 5 | App surat & laporan: template + surat internal (tidak menunggu 3–4) | 1 | **Selesai** |
+| 6 | App surat & laporan: surat keluar bermuatan pasien | 1 | **Selesai** — pasien dibaca langsung dari layanan identitas, tidak menunggu migrasi `patientId` SIMKlinik |
 
 Surat internal sudah bisa dikerjakan setelah langkah 1, karena tidak menyentuh data pasien — jadi ada hasil yang bisa dipakai klinik tanpa menunggu migrasi database yang berisiko.
 

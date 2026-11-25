@@ -69,11 +69,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     // Akses aplikasi dibaca ulang dari database setiap request: pencabutan akses
     // berlaku seketika, tidak menunggu token kedaluwarsa 12 jam.
-    const apps = this.db
-      .query<{ appCode: string }>('SELECT appCode FROM app_access WHERE userId = ? AND isActive = 1', [
-        user.id,
-      ])
-      .map((row) => row.appCode);
+    const apps = this.db.appsForUser(user.id, user.role);
 
     if (!apps.includes(payload.aud)) {
       throw new UnauthorizedException(`Akun tidak memiliki akses ke aplikasi '${payload.aud}'.`);

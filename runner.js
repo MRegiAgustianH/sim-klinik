@@ -1,9 +1,10 @@
 // runner.js — launcher tunggal seluruh aplikasi klinik.
 //
-//   node runner.js                    -> PRODUCTION: identitas + portal + SIMKlinik
+//   node runner.js                    -> PRODUCTION: identitas + portal + SIMKlinik + sistem surat
 //   node runner.js --dev              -> DEVELOPMENT: port & database terpisah, hot reload
-//   node runner.js --only=simklinik   -> identitas + SIMKlinik (tanpa portal)
-//   node runner.js --only=portal      -> identitas + portal (tanpa SIMKlinik)
+//   node runner.js --only=simklinik   -> identitas + SIMKlinik saja
+//   node runner.js --only=portal      -> identitas + portal saja
+//   node runner.js --only=surat       -> identitas + sistem surat saja
 //
 // Port diambil dari config/ports.js. Mode dev berjalan berdampingan dengan
 // production yang sedang melayani pasien, jadi port dan database sengaja beda.
@@ -20,19 +21,25 @@ const DIRS = {
   api: path.join(ROOT, 'apps', 'simklinik-api'),
   web: path.join(ROOT, 'apps', 'simklinik-web'),
   portal: path.join(ROOT, 'apps', 'portal'),
+  suratApi: path.join(ROOT, 'apps', 'surat-laporan', 'api'),
+  suratWeb: path.join(ROOT, 'apps', 'surat-laporan', 'web'),
 };
 
 // Penanda mode untuk backend: keberadaan .env.local = development (database
 // -dev). Penanda yang tertinggal di production membuat data pasien masuk ke
 // database dev tanpa disadari, jadi runner selalu menyesuaikannya.
-const DEV_MARKERS = [path.join(DIRS.api, '.env.local'), path.join(DIRS.identity, '.env.local')];
+const DEV_MARKERS = [
+  path.join(DIRS.api, '.env.local'),
+  path.join(DIRS.identity, '.env.local'),
+  path.join(DIRS.suratApi, '.env.local'),
+];
 
 const args = process.argv.slice(2);
 const isDev = args.includes('--dev') || process.env.MODE === 'dev';
 const onlyArg = args.find((a) => a.startsWith('--only='));
 const only = onlyArg ? onlyArg.slice('--only='.length) : null;
-if (only && !['simklinik', 'portal'].includes(only)) {
-  console.error(`[GAGAL] --only=${only} tidak dikenal. Pilihan: simklinik, portal.`);
+if (only && !['simklinik', 'portal', 'surat'].includes(only)) {
+  console.error(`[GAGAL] --only=${only} tidak dikenal. Pilihan: simklinik, portal, surat.`);
   process.exit(1);
 }
 
@@ -42,8 +49,9 @@ const LABEL = isDev ? 'DEVELOPMENT' : 'PRODUCTION';
 const NEXT_MODE = isDev ? 'dev' : 'start';
 const NEXT_DIR = isDev ? '.next-dev' : '.next';
 const KEY_SUFFIX = isDev ? '-dev' : '';
-const runSimklinik = only !== 'portal';
-const runPortal = only !== 'simklinik';
+const runSimklinik = !only || only === 'simklinik';
+const runPortal = !only || only === 'portal';
+const runSurat = !only || only === 'surat';
 
 const USE_COLOR = process.stdout.isTTY;
 const color = (code, text) => (USE_COLOR ? `\x1b[${code}m${text}\x1b[0m` : text);
@@ -172,6 +180,10 @@ function cleanup(exitCode = 0) {
     killPortProcess(P.simklinikApi);
   }
   if (runPortal) killPortProcess(P.portal);
+  if (runSurat) {
+    killPortProcess(P.suratWeb);
+    killPortProcess(P.suratApi);
+  }
   // Layanan identitas milik jendela lain tidak boleh ikut dimatikan: portal
   // dan aplikasi lain yang memakainya akan terputus.
   if (identityStartedHere) killPortProcess(P.identity);
@@ -179,7 +191,7 @@ function cleanup(exitCode = 0) {
 }
 
 async function main() {
-  const apps = [runPortal && 'portal', runSimklinik && 'SIMKlinik'].filter(Boolean).join(' + ');
+  const apps = [runPortal && 'portal', runSimklinik && 'SIMKlinik', runSurat && 'surat'].filter(Boolean).join(' + ');
   logBanner(
     isDev ? cyan(`KLINIK - MODE DEVELOPMENT (${apps})`) : green(`KLINIK UTAMA DR. H. A. ROTINSULU CIANJUR - PRODUCTION (${apps})`),
     isDev
@@ -189,7 +201,7 @@ async function main() {
 
   // 1. Port. Layanan identitas yang sudah hidup dipakai ulang, bukan dimatikan:
   //    dua instance pada satu file SQLite tidak aman.
-  console.log('[1/6] Memeriksa port...');
+  console.log('[1/7] Memeriksa port...');
   const identityRunning = await ping(P.identity, '/api/health');
   if (identityRunning) {
     console.log(yellow(`      [INFO] Layanan identitas sudah berjalan di port ${P.identity}; dipakai ulang.`));
@@ -201,6 +213,10 @@ async function main() {
     killPortProcess(P.simklinikApi);
   }
   if (runPortal) killPortProcess(P.portal);
+  if (runSurat) {
+    killPortProcess(P.suratWeb);
+    killPortProcess(P.suratApi);
+  }
   if (await ping(OTHER.identity, '/api/health')) {
     console.log(yellow(`      [INFO] Mode ${isDev ? 'production' : 'development'} juga sedang berjalan; tidak diganggu.`));
   }
@@ -215,19 +231,23 @@ async function main() {
       console.log(`      [OK] Penanda development dihapus: ${path.relative(ROOT, marker)}`);
     }
   }
-  console.log('[2/6] Memeriksa dependensi...');
+  console.log('[2/7] Memeriksa dependensi...');
   ensureInstalled('layanan identitas', DIRS.identity);
   if (runSimklinik) {
     ensureInstalled('backend SIMKlinik', DIRS.api);
     ensureInstalled('frontend SIMKlinik', DIRS.web);
   }
   if (runPortal) ensureInstalled('portal', DIRS.portal);
+  if (runSurat) {
+    ensureInstalled('backend sistem surat', DIRS.suratApi);
+    ensureInstalled('frontend sistem surat', DIRS.suratWeb);
+  }
   console.log('      [OK] Dependensi lengkap.\n');
 
   // 3. Layanan identitas lebih dulu: login portal dan pendaftaran pasien di
   //    SIMKlinik (mode gagal cepat) tidak bisa jalan tanpa layanan ini.
   if (!identityRunning) {
-    console.log(`[3/6] Menjalankan Layanan Identitas (port ${P.identity})...`);
+    console.log(`[3/7] Menjalankan Layanan Identitas (port ${P.identity})...`);
     spawnTracked(
       'Identitas',
       ['node_modules/ts-node/dist/bin.js', path.join(DIRS.identity, 'src', 'main.ts')],
@@ -241,16 +261,17 @@ async function main() {
     }
     console.log('      [OK] Layanan identitas aktif.\n');
   } else {
-    console.log('[3/6] Layanan identitas sudah berjalan (tidak dijalankan ulang).\n');
+    console.log('[3/7] Layanan identitas sudah berjalan (tidak dijalankan ulang).\n');
   }
 
   // 4. Service key antar-layanan di secrets/service-keys/. Portal memakainya
   //    untuk menukar token; SIMKlinik untuk menukar tiket SSO.
-  console.log('[4/6] Memeriksa service key...');
+  console.log('[4/7] Memeriksa service key...');
   const keyDir = path.join(ROOT, 'secrets', 'service-keys');
   for (const [name, command] of [
     ['portal', 'portal --portal'],
     ['simklinik', 'simklinik'],
+    ['surat', 'surat'],
   ]) {
     if (!fs.existsSync(path.join(keyDir, `${name}${KEY_SUFFIX}.key`))) {
       console.log(`      [SETUP] Membuat service key ${name}...`);
@@ -261,7 +282,7 @@ async function main() {
 
   // 5. SIMKlinik: backend lalu frontend.
   if (runSimklinik) {
-    console.log(`[5/6] Menjalankan SIMKlinik (backend ${P.simklinikApi}, frontend ${P.simklinikWeb})...`);
+    console.log(`[5/7] Menjalankan SIMKlinik (backend ${P.simklinikApi}, frontend ${P.simklinikWeb})...`);
     const dist = path.join(DIRS.api, 'dist', 'main.js');
     const useDist = !isDev && fs.existsSync(dist);
     if (!useDist) console.log('      [INFO] Backend dijalankan dari source (ts-node).');
@@ -307,7 +328,7 @@ async function main() {
 
   // 6. Portal dashboard.
   if (runPortal) {
-    console.log(`[6/6] Menjalankan Portal (port ${P.portal})...`);
+    console.log(`[6/7] Menjalankan Portal (port ${P.portal})...`);
     ensureNextBuild('portal', DIRS.portal);
     spawnTracked('Portal', nextArgs(DIRS.portal, P.portal), {
       cwd: DIRS.portal,
@@ -322,6 +343,48 @@ async function main() {
     });
   }
 
+  // 7. Sistem surat: backend lalu frontend. Memakai layanan identitas yang
+  //    sama untuk login, izin fitur, dan data pasien surat keluar.
+  if (runSurat) {
+    console.log(`[7/7] Menjalankan Sistem Surat (backend ${P.suratApi}, frontend ${P.suratWeb})...`);
+    const suratDist = path.join(DIRS.suratApi, 'dist', 'main.js');
+    const useSuratDist = !isDev && fs.existsSync(suratDist);
+    spawnTracked(
+      'Surat-API',
+      useSuratDist ? [suratDist] : ['node_modules/ts-node/dist/bin.js', path.join(DIRS.suratApi, 'src', 'main.ts')],
+      {
+        cwd: DIRS.suratApi,
+        env: {
+          ...BASE_ENV,
+          PORT: String(P.suratApi),
+          NODE_ENV: isDev ? 'development' : 'production',
+          IDENTITY_SERVICE_URL: `http://127.0.0.1:${P.identity}`,
+        },
+      },
+      { showPatterns: ['Backend Sistem Surat Aktif', ...(isDev ? ['error TS'] : [])] }
+    );
+    if (await waitReady(P.suratApi, isDev ? 40000 : 20000, '/api/health')) {
+      console.log('      [OK] Backend sistem surat aktif.');
+    } else {
+      console.warn(yellow('      [PERINGATAN] Backend sistem surat memerlukan waktu lebih lama. Cek log di atas.'));
+    }
+
+    ensureNextBuild('frontend sistem surat', DIRS.suratWeb);
+    spawnTracked('Surat', nextArgs(DIRS.suratWeb, P.suratWeb), {
+      cwd: DIRS.suratWeb,
+      stdio: 'inherit',
+      env: {
+        ...BASE_ENV,
+        BACKEND_PORT: String(P.suratApi),
+        PORT: String(P.suratWeb),
+        NEXT_DIST_DIR: NEXT_DIR,
+        // Dipakai halaman /sso dan route /api/sso/redeem.
+        PORTAL_URL: `http://127.0.0.1:${P.portal}`,
+      },
+    });
+    console.log('');
+  }
+
   const ip = getLocalIp();
   setTimeout(() => {
     logBanner(isDev ? cyan('MODE DEVELOPMENT BERJALAN') : green('SISTEM KLINIK BERJALAN'), [
@@ -333,6 +396,9 @@ async function main() {
       ...(runSimklinik
         ? ['SIMKlinik (vaksinasi, ICV, MCU):', `  Komputer ini -> http://localhost:${P.simklinikWeb}`, `  Jaringan LAN -> http://${ip}:${P.simklinikWeb}`, '']
         : []),
+      ...(runSurat
+        ? ['Sistem Surat (surat keluar & internal):', `  Komputer ini -> http://localhost:${P.suratWeb}`, `  Jaringan LAN -> http://${ip}:${P.suratWeb}`, '']
+        : []),
       `Layanan identitas: http://localhost:${P.identity}/api/health`,
       '',
       'Akun login (satu akun untuk semua aplikasi):',
@@ -340,12 +406,18 @@ async function main() {
       '  - Dokter     : dokter     / dokter123',
       '  - Perawat    : perawat    / perawat123',
       '',
-      `Database: data/simklinik/vaksinku${KEY_SUFFIX}.sqlite, data/identity/identity${KEY_SUFFIX}.sqlite`,
+      `Database: data/simklinik/vaksinku${KEY_SUFFIX}.sqlite, data/identity/identity${KEY_SUFFIX}.sqlite, data/surat/surat${KEY_SUFFIX}.sqlite`,
       '',
       `Tekan CTRL + C di jendela ini untuk mematikan seluruh layanan ${LABEL}.`,
     ]);
     if (!process.env.NO_BROWSER) {
-      openBrowser(runPortal ? `http://localhost:${P.portal}/login` : `http://localhost:${P.simklinikWeb}/login`);
+      openBrowser(
+        runPortal
+          ? `http://localhost:${P.portal}/login`
+          : runSimklinik
+            ? `http://localhost:${P.simklinikWeb}/login`
+            : `http://localhost:${P.suratWeb}/login`
+      );
     }
   }, 1500);
 

@@ -13,16 +13,17 @@ module.exports = {
     simklinikApi: 4000,
     simklinikWeb: 8080,
     portal: 8082,
+    suratApi: 4002,
+    suratWeb: 8084,
   },
   dev: {
     identity: 4011,
     simklinikApi: 4001,
     simklinikWeb: 8081,
     portal: 8083,
+    suratApi: 4003,
+    suratWeb: 8085,
   },
   // Dicadangkan untuk aplikasi berikutnya agar tidak bentrok.
-  reserved: {
-    suratLaporanWeb: { prod: 8084, dev: 8085 },
-    suratLaporanApi: { prod: 4002, dev: 4003 },
-  },
+  reserved: {},
 };
